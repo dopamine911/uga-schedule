@@ -5,7 +5,9 @@ import { openDb } from "./db/client.ts"
 import { runJobs } from "./jobs/tick.ts"
 
 if (!config.sessionSecret) {
-  console.error("SESSION_SECRET is required. For local development start with DEV_MODE=1 (pnpm dev does).")
+  console.error(
+    "SESSION_SECRET is required. For local development start with DEV_MODE=1 (pnpm dev does)."
+  )
   process.exit(1)
 }
 
@@ -21,5 +23,7 @@ setInterval(() => {
 }, config.tickMs)
 
 serve({ fetch: app.fetch, port: config.port }, (info) => {
-  console.log(`API listening on http://localhost:${info.port} (tz ${config.tz}, dev ${config.devMode})`)
+  console.log(
+    `API listening on http://localhost:${info.port} (tz ${config.tz}, dev ${config.devMode})`
+  )
 })

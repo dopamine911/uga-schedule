@@ -1,4 +1,11 @@
-import { integer, primaryKey, sqliteTable, text, uniqueIndex, index } from "drizzle-orm/sqlite-core"
+import {
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+  index,
+} from "drizzle-orm/sqlite-core"
 import type {
   CheckinCondition,
   EventState,
@@ -19,7 +26,10 @@ import { now } from "../lib/clock.ts"
 // Conventions: text UUID ids; instants are UTC ISO strings; calendar dates are "YYYY-MM-DD";
 // wall-clock times are "HH:MM" in the campus time zone.
 
-const id = () => text("id").primaryKey().$defaultFn(() => crypto.randomUUID())
+const id = () =>
+  text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID())
 const createdAt = () => text("created_at").notNull().$defaultFn(now)
 const bool = (name: string) => integer(name, { mode: "boolean" })
 
@@ -29,8 +39,13 @@ export const users = sqliteTable("users", {
   idpSubject: text("idp_subject").notNull().unique(),
   email: text("email").notNull().unique(),
   displayName: text("display_name").notNull(),
-  affiliation: text("affiliation").$type<"student" | "faculty" | "staff" | "other">().notNull(),
-  status: text("status").$type<"active" | "disabled">().notNull().default("active"),
+  affiliation: text("affiliation")
+    .$type<"student" | "faculty" | "staff" | "other">()
+    .notNull(),
+  status: text("status")
+    .$type<"active" | "disabled">()
+    .notNull()
+    .default("active"),
   createdAt: createdAt(),
 })
 
@@ -38,14 +53,19 @@ export const roleAssignments = sqliteTable(
   "role_assignments",
   {
     id: id(),
-    userId: text("user_id").notNull().references(() => users.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
     role: text("role").$type<RoleCode>().notNull(),
     studioId: text("studio_id").references(() => studios.id),
-    source: text("source").$type<"auto" | "manual">().notNull().default("manual"),
+    source: text("source")
+      .$type<"auto" | "manual">()
+      .notNull()
+      .default("manual"),
     assignedBy: text("assigned_by").references(() => users.id),
     assignedAt: createdAt(),
   },
-  (t) => [uniqueIndex("role_assignment_uq").on(t.userId, t.role, t.studioId)],
+  (t) => [uniqueIndex("role_assignment_uq").on(t.userId, t.role, t.studioId)]
 )
 
 /**
@@ -56,7 +76,9 @@ export const permissionDenials = sqliteTable(
   "permission_denials",
   {
     id: id(),
-    userId: text("user_id").notNull().references(() => users.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
     permission: text("permission").$type<Permission>().notNull(),
     studioId: text("studio_id").references(() => studios.id),
     reason: text("reason").notNull(),
@@ -64,7 +86,9 @@ export const permissionDenials = sqliteTable(
     createdAt: createdAt(),
   },
   // NULL studio ids are distinct in SQLite unique indexes; the route checks duplicates explicitly.
-  (t) => [uniqueIndex("permission_denial_uq").on(t.userId, t.permission, t.studioId)],
+  (t) => [
+    uniqueIndex("permission_denial_uq").on(t.userId, t.permission, t.studioId),
+  ]
 )
 
 // ── F-002 ──────────────────────────────────────────────────────────────
@@ -83,27 +107,40 @@ export const courseOfferings = sqliteTable("course_offerings", {
   term: text("term").notNull(),
   startDate: text("start_date").notNull(),
   endDate: text("end_date").notNull(),
-  levelId: text("level_id").notNull().references(() => levels.id),
+  levelId: text("level_id")
+    .notNull()
+    .references(() => levels.id),
 })
 
 export const enrollments = sqliteTable(
   "enrollments",
   {
     id: id(),
-    courseOfferingId: text("course_offering_id").notNull().references(() => courseOfferings.id),
-    userId: text("user_id").notNull().references(() => users.id),
-    status: text("status").$type<"enrolled" | "dropped">().notNull().default("enrolled"),
+    courseOfferingId: text("course_offering_id")
+      .notNull()
+      .references(() => courseOfferings.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    status: text("status")
+      .$type<"enrolled" | "dropped">()
+      .notNull()
+      .default("enrolled"),
     droppedOn: text("dropped_on"),
   },
-  (t) => [index("enrollment_course_idx").on(t.courseOfferingId)],
+  (t) => [index("enrollment_course_idx").on(t.courseOfferingId)]
 )
 
 export const levelGrants = sqliteTable(
   "level_grants",
   {
     id: id(),
-    userId: text("user_id").notNull().references(() => users.id),
-    levelId: text("level_id").notNull().references(() => levels.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    levelId: text("level_id")
+      .notNull()
+      .references(() => levels.id),
     source: text("source").$type<"course" | "manual">().notNull(),
     enrollmentId: text("enrollment_id").references(() => enrollments.id),
     validFrom: text("valid_from").notNull(),
@@ -116,32 +153,41 @@ export const levelGrants = sqliteTable(
     expiryWarnedAt: text("expiry_warned_at"),
     createdAt: createdAt(),
   },
-  (t) => [index("grant_user_idx").on(t.userId)],
+  (t) => [index("grant_user_idx").on(t.userId)]
 )
 
 // ── F-003 ──────────────────────────────────────────────────────────────
 export const equipmentClasses = sqliteTable("equipment_classes", {
   id: id(),
   name: text("name").notNull().unique(),
-  minLevelId: text("min_level_id").notNull().references(() => levels.id),
+  minLevelId: text("min_level_id")
+    .notNull()
+    .references(() => levels.id),
   description: text("description").notNull().default(""),
 })
 
 export const equipmentTypes = sqliteTable("equipment_types", {
   id: id(),
-  classId: text("class_id").notNull().references(() => equipmentClasses.id),
+  classId: text("class_id")
+    .notNull()
+    .references(() => equipmentClasses.id),
   name: text("name").notNull(),
   manufacturer: text("manufacturer").notNull().default(""),
   model: text("model").notNull().default(""),
   tracking: text("tracking").$type<"serialized" | "bulk">().notNull(),
-  status: text("status").$type<"active" | "inactive">().notNull().default("active"),
+  status: text("status")
+    .$type<"active" | "inactive">()
+    .notNull()
+    .default("active"),
   maxPerEvent: integer("max_per_event"),
   description: text("description").notNull().default(""),
 })
 
 export const equipmentUnits = sqliteTable("equipment_units", {
   id: id(),
-  typeId: text("type_id").notNull().references(() => equipmentTypes.id),
+  typeId: text("type_id")
+    .notNull()
+    .references(() => equipmentTypes.id),
   assetTag: text("asset_tag").notNull().unique(),
   serialNumber: text("serial_number").notNull().default(""),
   status: text("status").$type<UnitStatus>().notNull().default("available"),
@@ -150,7 +196,9 @@ export const equipmentUnits = sqliteTable("equipment_units", {
 })
 
 export const bulkStock = sqliteTable("bulk_stock", {
-  typeId: text("type_id").primaryKey().references(() => equipmentTypes.id),
+  typeId: text("type_id")
+    .primaryKey()
+    .references(() => equipmentTypes.id),
   qtyAvailable: integer("qty_available").notNull().default(0),
   qtyInUse: integer("qty_in_use").notNull().default(0),
   qtyDamaged: integer("qty_damaged").notNull().default(0),
@@ -161,7 +209,9 @@ export const bulkStock = sqliteTable("bulk_stock", {
 export const statusHistory = sqliteTable("status_history", {
   id: id(),
   unitId: text("unit_id").references(() => equipmentUnits.id),
-  typeId: text("type_id").notNull().references(() => equipmentTypes.id),
+  typeId: text("type_id")
+    .notNull()
+    .references(() => equipmentTypes.id),
   fromStatus: text("from_status").$type<UnitStatus>(),
   toStatus: text("to_status").$type<UnitStatus>().notNull(),
   qty: integer("qty").notNull().default(1),
@@ -177,15 +227,24 @@ export const studios = sqliteTable("studios", {
   name: text("name").notNull().unique(),
   location: text("location").notNull().default(""),
   capacityPeople: integer("capacity_people").notNull().default(1),
-  minLevelId: text("min_level_id").notNull().references(() => levels.id),
+  minLevelId: text("min_level_id")
+    .notNull()
+    .references(() => levels.id),
   turnaroundMinutes: integer("turnaround_minutes").notNull().default(30),
-  slotGranularityMinutes: integer("slot_granularity_minutes").notNull().default(30),
-  status: text("status").$type<"active" | "inactive">().notNull().default("active"),
+  slotGranularityMinutes: integer("slot_granularity_minutes")
+    .notNull()
+    .default(30),
+  status: text("status")
+    .$type<"active" | "inactive">()
+    .notNull()
+    .default("active"),
 })
 
 export const openingHours = sqliteTable("opening_hours", {
   id: id(),
-  studioId: text("studio_id").notNull().references(() => studios.id),
+  studioId: text("studio_id")
+    .notNull()
+    .references(() => studios.id),
   weekday: integer("weekday").notNull(),
   opens: text("opens").notNull(),
   closes: text("closes").notNull(),
@@ -205,7 +264,10 @@ export const eventTypes = sqliteTable("event_types", {
   id: id(),
   name: text("name").notNull().unique(),
   description: text("description").notNull().default(""),
-  status: text("status").$type<"active" | "inactive">().notNull().default("active"),
+  status: text("status")
+    .$type<"active" | "inactive">()
+    .notNull()
+    .default("active"),
   maxDays: integer("max_days").notNull().default(1),
   maxHoursPerDay: integer("max_hours_per_day").notNull().default(8),
   dailyEquipmentReturn: bool("daily_equipment_return").notNull().default(false),
@@ -214,29 +276,41 @@ export const eventTypes = sqliteTable("event_types", {
   requiresResults: bool("requires_results").notNull().default(false),
   resultsDueDays: integer("results_due_days").notNull().default(7),
   requesterCanUpload: bool("requester_can_upload").notNull().default(false),
-  requiresSponsorSignoff: bool("requires_sponsor_signoff").notNull().default(false),
+  requiresSponsorSignoff: bool("requires_sponsor_signoff")
+    .notNull()
+    .default(false),
 })
 
 export const eventTypeStudios = sqliteTable(
   "event_type_studios",
   {
-    eventTypeId: text("event_type_id").notNull().references(() => eventTypes.id),
-    studioId: text("studio_id").notNull().references(() => studios.id),
+    eventTypeId: text("event_type_id")
+      .notNull()
+      .references(() => eventTypes.id),
+    studioId: text("studio_id")
+      .notNull()
+      .references(() => studios.id),
   },
-  (t) => [primaryKey({ columns: [t.eventTypeId, t.studioId] })],
+  (t) => [primaryKey({ columns: [t.eventTypeId, t.studioId] })]
 )
 
 export const stageTemplates = sqliteTable("stage_templates", {
   id: id(),
-  eventTypeId: text("event_type_id").notNull().references(() => eventTypes.id),
+  eventTypeId: text("event_type_id")
+    .notNull()
+    .references(() => eventTypes.id),
   seq: integer("seq").notNull(),
   name: text("name").notNull(),
   kind: text("kind").$type<StageKind>().notNull(),
   anchor: text("anchor").$type<StageAnchor>().notNull(),
   offsetMinutes: integer("offset_minutes").notNull(),
-  recipients: text("recipients", { mode: "json" }).$type<StageRecipient[]>().notNull(),
+  recipients: text("recipients", { mode: "json" })
+    .$type<StageRecipient[]>()
+    .notNull(),
   /** task only */
-  assigneeRole: text("assignee_role").$type<"requester" | "sponsor" | "studio_staff">(),
+  assigneeRole: text("assignee_role").$type<
+    "requester" | "sponsor" | "studio_staff"
+  >(),
   blocksCheckout: bool("blocks_checkout").notNull().default(false),
   message: text("message").notNull().default(""),
   /** Soft-deleted templates keep existing instances valid (BR-005-07). */
@@ -256,14 +330,26 @@ export const events = sqliteTable(
     id: id(),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
-    eventTypeId: text("event_type_id").notNull().references(() => eventTypes.id),
-    studioId: text("studio_id").notNull().references(() => studios.id),
-    requesterId: text("requester_id").notNull().references(() => users.id),
+    eventTypeId: text("event_type_id")
+      .notNull()
+      .references(() => eventTypes.id),
+    studioId: text("studio_id")
+      .notNull()
+      .references(() => studios.id),
+    requesterId: text("requester_id")
+      .notNull()
+      .references(() => users.id),
     sponsorId: text("sponsor_id").references(() => users.id),
     state: text("state").$type<EventState>().notNull().default("Draft"),
     needsReview: bool("needs_review").notNull().default(false),
-    reviewReasons: text("review_reasons", { mode: "json" }).$type<ReviewReason[]>().notNull().default([]),
-    overrideRequested: text("override_requested", { mode: "json" }).$type<SoftPolicyCode[]>().notNull().default([]),
+    reviewReasons: text("review_reasons", { mode: "json" })
+      .$type<ReviewReason[]>()
+      .notNull()
+      .default([]),
+    overrideRequested: text("override_requested", { mode: "json" })
+      .$type<SoftPolicyCode[]>()
+      .notNull()
+      .default([]),
     overrideJustification: text("override_justification").notNull().default(""),
     submittedAt: text("submitted_at"),
     sponsorDecidedAt: text("sponsor_decided_at"),
@@ -275,45 +361,62 @@ export const events = sqliteTable(
     createdAt: createdAt(),
     updatedAt: createdAt(),
   },
-  (t) => [index("event_state_idx").on(t.state), index("event_studio_idx").on(t.studioId)],
+  (t) => [
+    index("event_state_idx").on(t.state),
+    index("event_studio_idx").on(t.studioId),
+  ]
 )
 
 export const eventDays = sqliteTable(
   "event_days",
   {
     id: id(),
-    eventId: text("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
     day: text("day").notNull(),
     startTime: text("start_time").notNull(),
     endTime: text("end_time").notNull(),
     startsAt: text("starts_at").notNull(),
     endsAt: text("ends_at").notNull(),
   },
-  (t) => [index("event_day_event_idx").on(t.eventId)],
+  (t) => [index("event_day_event_idx").on(t.eventId)]
 )
 
 export const eventParticipants = sqliteTable(
   "event_participants",
   {
-    eventId: text("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
-    userId: text("user_id").notNull().references(() => users.id),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
   },
-  (t) => [primaryKey({ columns: [t.eventId, t.userId] })],
+  (t) => [primaryKey({ columns: [t.eventId, t.userId] })]
 )
 
 export const equipmentLines = sqliteTable("equipment_lines", {
   id: id(),
-  eventId: text("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
-  equipmentTypeId: text("equipment_type_id").notNull().references(() => equipmentTypes.id),
+  eventId: text("event_id")
+    .notNull()
+    .references(() => events.id, { onDelete: "cascade" }),
+  equipmentTypeId: text("equipment_type_id")
+    .notNull()
+    .references(() => equipmentTypes.id),
   qty: integer("qty").notNull(),
   note: text("note").notNull().default(""),
 })
 
 export const policyOverrides = sqliteTable("policy_overrides", {
   id: id(),
-  eventId: text("event_id").notNull().references(() => events.id),
+  eventId: text("event_id")
+    .notNull()
+    .references(() => events.id),
   ruleCode: text("rule_code").notNull(),
-  actorId: text("actor_id").notNull().references(() => users.id),
+  actorId: text("actor_id")
+    .notNull()
+    .references(() => users.id),
   reason: text("reason").notNull(),
   at: createdAt(),
 })
@@ -322,14 +425,22 @@ export const stageInstances = sqliteTable(
   "stage_instances",
   {
     id: id(),
-    eventId: text("event_id").notNull().references(() => events.id),
-    stageTemplateId: text("stage_template_id").notNull().references(() => stageTemplates.id),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => events.id),
+    stageTemplateId: text("stage_template_id")
+      .notNull()
+      .references(() => stageTemplates.id),
     dayIndex: integer("day_index"),
     // Snapshot of the template (BR-005-07)
     name: text("name").notNull(),
     kind: text("kind").$type<StageKind>().notNull(),
-    recipients: text("recipients", { mode: "json" }).$type<StageRecipient[]>().notNull(),
-    assigneeRole: text("assignee_role").$type<"requester" | "sponsor" | "studio_staff">(),
+    recipients: text("recipients", { mode: "json" })
+      .$type<StageRecipient[]>()
+      .notNull(),
+    assigneeRole: text("assignee_role").$type<
+      "requester" | "sponsor" | "studio_staff"
+    >(),
     blocksCheckout: bool("blocks_checkout").notNull().default(false),
     message: text("message").notNull().default(""),
     dueAt: text("due_at").notNull(),
@@ -338,7 +449,7 @@ export const stageInstances = sqliteTable(
     completedAt: text("completed_at"),
     overrideReason: text("override_reason"),
   },
-  (t) => [index("stage_due_idx").on(t.status, t.dueAt)],
+  (t) => [index("stage_due_idx").on(t.status, t.dueAt)]
 )
 
 // ── F-007 ──────────────────────────────────────────────────────────────
@@ -346,15 +457,23 @@ export const checkoutRecords = sqliteTable(
   "checkout_records",
   {
     id: id(),
-    eventId: text("event_id").notNull().references(() => events.id),
-    equipmentLineId: text("equipment_line_id").notNull().references(() => equipmentLines.id),
-    equipmentTypeId: text("equipment_type_id").notNull().references(() => equipmentTypes.id),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => events.id),
+    equipmentLineId: text("equipment_line_id")
+      .notNull()
+      .references(() => equipmentLines.id),
+    equipmentTypeId: text("equipment_type_id")
+      .notNull()
+      .references(() => equipmentTypes.id),
     /** serialized only */
     unitId: text("unit_id").references(() => equipmentUnits.id),
     /** units for serialized (always 1); quantity for bulk */
     qty: integer("qty").notNull(),
     outAt: text("out_at").notNull(),
-    outBy: text("out_by").notNull().references(() => users.id),
+    outBy: text("out_by")
+      .notNull()
+      .references(() => users.id),
     conditionOut: text("condition_out").notNull().default("ok"),
     dueAt: text("due_at").notNull(),
     inAt: text("in_at"),
@@ -369,13 +488,17 @@ export const checkoutRecords = sqliteTable(
     late: bool("late").notNull().default(false),
     lastOverdueNoticeAt: text("last_overdue_notice_at"),
   },
-  (t) => [index("checkout_event_idx").on(t.eventId)],
+  (t) => [index("checkout_event_idx").on(t.eventId)]
 )
 
 export const acknowledgements = sqliteTable("acknowledgements", {
   id: id(),
-  eventId: text("event_id").notNull().references(() => events.id),
-  userId: text("user_id").notNull().references(() => users.id),
+  eventId: text("event_id")
+    .notNull()
+    .references(() => events.id),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id),
   termsVersion: text("terms_version").notNull(),
   at: createdAt(),
 })
@@ -384,10 +507,15 @@ export const holds = sqliteTable(
   "holds",
   {
     id: id(),
-    userId: text("user_id").notNull().references(() => users.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
     reason: text("reason").$type<HoldReason>().notNull(),
     eventId: text("event_id").references(() => events.id),
-    status: text("status").$type<"active" | "cleared">().notNull().default("active"),
+    status: text("status")
+      .$type<"active" | "cleared">()
+      .notNull()
+      .default("active"),
     source: text("source").$type<"system" | "staff">().notNull(),
     note: text("note").notNull().default(""),
     autoClearAt: text("auto_clear_at"),
@@ -396,20 +524,25 @@ export const holds = sqliteTable(
     clearedAt: text("cleared_at"),
     createdAt: createdAt(),
   },
-  (t) => [index("hold_user_idx").on(t.userId, t.status)],
+  (t) => [index("hold_user_idx").on(t.userId, t.status)]
 )
 
 // ── F-008 ──────────────────────────────────────────────────────────────
 export const resultPackages = sqliteTable("result_packages", {
   id: id(),
-  eventId: text("event_id").notNull().unique().references(() => events.id),
+  eventId: text("event_id")
+    .notNull()
+    .unique()
+    .references(() => events.id),
   status: text("status").$type<PackageStatus>().notNull().default("collecting"),
   resultsDueAt: text("results_due_at"),
   publishedAt: text("published_at"),
   publishedBy: text("published_by").references(() => users.id),
   publishOverrideReason: text("publish_override_reason"),
   retainUntil: text("retain_until"),
-  sponsorSignoff: text("sponsor_signoff").$type<"pending" | "accepted" | "not_required">().notNull(),
+  sponsorSignoff: text("sponsor_signoff")
+    .$type<"pending" | "accepted" | "not_required">()
+    .notNull(),
   sponsorComment: text("sponsor_comment").notNull().default(""),
   signedOffAt: text("signed_off_at"),
   checkinReport: text("checkin_report", { mode: "json" }).$type<unknown>(),
@@ -418,21 +551,29 @@ export const resultPackages = sqliteTable("result_packages", {
 
 export const resultItems = sqliteTable("result_items", {
   id: id(),
-  packageId: text("package_id").notNull().references(() => resultPackages.id),
+  packageId: text("package_id")
+    .notNull()
+    .references(() => resultPackages.id),
   kind: text("kind").$type<"file" | "link">().notNull(),
   title: text("title").notNull(),
   storageKey: text("storage_key"),
   url: text("url"),
   mimeType: text("mime_type"),
   sizeBytes: integer("size_bytes"),
-  uploadedBy: text("uploaded_by").notNull().references(() => users.id),
+  uploadedBy: text("uploaded_by")
+    .notNull()
+    .references(() => users.id),
   uploadedAt: createdAt(),
 })
 
 export const resultAccessLog = sqliteTable("result_access_log", {
   id: id(),
-  itemId: text("item_id").notNull().references(() => resultItems.id),
-  userId: text("user_id").notNull().references(() => users.id),
+  itemId: text("item_id")
+    .notNull()
+    .references(() => resultItems.id),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id),
   at: createdAt(),
 })
 
@@ -451,7 +592,9 @@ export const notifications = sqliteTable(
   {
     id: id(),
     code: text("code").notNull(),
-    recipientId: text("recipient_id").notNull().references(() => users.id),
+    recipientId: text("recipient_id")
+      .notNull()
+      .references(() => users.id),
     eventId: text("event_id").references(() => events.id),
     subject: text("subject").notNull(),
     body: text("body").notNull(),
@@ -460,7 +603,7 @@ export const notifications = sqliteTable(
     createdAt: createdAt(),
     readAt: text("read_at"),
   },
-  (t) => [index("notification_recipient_idx").on(t.recipientId, t.readAt)],
+  (t) => [index("notification_recipient_idx").on(t.recipientId, t.readAt)]
 )
 
 export const auditLog = sqliteTable("audit_log", {

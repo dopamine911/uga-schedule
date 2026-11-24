@@ -15,7 +15,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import type { api } from "@/lib/api"
@@ -81,24 +86,37 @@ export function LifecycleStepper({ state }: { state: EventState }) {
   const index = HAPPY_PATH.findIndex((s) => s.state === state)
   const offPath = index === -1
   return (
-    <ol className="flex flex-wrap items-center gap-2" aria-label="Event lifecycle">
+    <ol
+      className="flex flex-wrap items-center gap-2"
+      aria-label="Event lifecycle"
+    >
       {HAPPY_PATH.map((s, i) => {
         const done = !offPath && i < index
         const current = !offPath && i === index
         return (
-          <li key={s.state} className="flex items-center gap-2" aria-current={current ? "step" : undefined}>
-            <Badge variant={current ? "default" : done ? "secondary" : "outline"}>
+          <li
+            key={s.state}
+            className="flex items-center gap-2"
+            aria-current={current ? "step" : undefined}
+          >
+            <Badge
+              variant={current ? "default" : done ? "secondary" : "outline"}
+            >
               {done && <CheckIcon data-icon="inline-start" />}
               {s.label}
             </Badge>
-            {i < HAPPY_PATH.length - 1 && <span className="text-muted-foreground text-xs">→</span>}
+            {i < HAPPY_PATH.length - 1 && (
+              <span className="text-xs text-muted-foreground">→</span>
+            )}
           </li>
         )
       })}
       {offPath && TERMINAL.includes(state) && (
         <li className="flex items-center gap-2" aria-current="step">
-          <span className="text-muted-foreground text-xs">·</span>
-          <Badge variant="destructive">{state === "NoShow" ? "No-show" : humanize(state)}</Badge>
+          <span className="text-xs text-muted-foreground">·</span>
+          <Badge variant="destructive">
+            {state === "NoShow" ? "No-show" : humanize(state)}
+          </Badge>
         </li>
       )}
     </ol>
@@ -140,7 +158,9 @@ export function TextActionDialog({
   const [values, setValues] = useState<Record<string, string>>({})
   const [error, setError] = useState<unknown>(null)
   const [pending, setPending] = useState(false)
-  const missing = fields.some((f) => f.required && !(values[f.name] ?? "").trim())
+  const missing = fields.some(
+    (f) => f.required && !(values[f.name] ?? "").trim()
+  )
 
   const onOpenChange = (next: boolean) => {
     setOpen(next)
@@ -156,7 +176,11 @@ export function TextActionDialog({
     setPending(true)
     setError(null)
     try {
-      await onSubmit(Object.fromEntries(fields.map((f) => [f.name, (values[f.name] ?? "").trim()])))
+      await onSubmit(
+        Object.fromEntries(
+          fields.map((f) => [f.name, (values[f.name] ?? "").trim()])
+        )
+      )
       setOpen(false)
     } catch (err) {
       setError(err)
@@ -172,7 +196,9 @@ export function TextActionDialog({
         <form onSubmit={submit} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
-            {description && <DialogDescription>{description}</DialogDescription>}
+            {description && (
+              <DialogDescription>{description}</DialogDescription>
+            )}
           </DialogHeader>
           {children}
           <FieldGroup>
@@ -180,25 +206,41 @@ export function TextActionDialog({
               <Field key={f.name}>
                 <FieldLabel htmlFor={`dlg-${f.name}`}>
                   {f.label}
-                  {!f.required && <span className="text-muted-foreground font-normal">(optional)</span>}
+                  {!f.required && (
+                    <span className="font-normal text-muted-foreground">
+                      (optional)
+                    </span>
+                  )}
                 </FieldLabel>
                 <Textarea
                   id={`dlg-${f.name}`}
                   value={values[f.name] ?? ""}
                   placeholder={f.placeholder}
                   required={f.required}
-                  onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
+                  onChange={(e) =>
+                    setValues((v) => ({ ...v, [f.name]: e.target.value }))
+                  }
                 />
-                {f.description && <FieldDescription>{f.description}</FieldDescription>}
+                {f.description && (
+                  <FieldDescription>{f.description}</FieldDescription>
+                )}
               </Field>
             ))}
           </FieldGroup>
           {error != null && <ErrorAlert error={error} />}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+            >
               Close
             </Button>
-            <Button type="submit" variant={destructive ? "destructive" : "default"} disabled={pending || missing}>
+            <Button
+              type="submit"
+              variant={destructive ? "destructive" : "default"}
+              disabled={pending || missing}
+            >
               {pending && <Spinner data-icon="inline-start" />}
               {confirmLabel}
             </Button>

@@ -1,11 +1,6 @@
 import { InfoIcon } from "lucide-react"
 import { IconTitle } from "@/components/common"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useTz } from "@/lib/auth"
 import { fmtInstant } from "@/lib/format"
 import { type PackageData, statusLabel } from "./model"

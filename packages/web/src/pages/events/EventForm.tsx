@@ -19,7 +19,10 @@ import { PeopleCard } from "@/components/events/form/PeopleCard"
 import { ScheduleCard } from "@/components/events/form/ScheduleCard"
 import { SummaryAside } from "@/components/events/form/SummaryAside"
 import { useEventCheck } from "@/components/events/form/useEventCheck"
-import { useEventDraft, useEventSave } from "@/components/events/form/useEventDraft"
+import {
+  useEventDraft,
+  useEventSave,
+} from "@/components/events/form/useEventDraft"
 import { useEventFormData } from "@/components/events/form/useEventFormData"
 import {
   canSaveOf,
@@ -100,8 +103,15 @@ function EventForm({
   initial: DraftForm
 }) {
   const me = useUser()
-  const { form, setForm, patch, justification, setJustification, currentId, setCreatedId } =
-    useEventDraft(initial, detail, eventId)
+  const {
+    form,
+    setForm,
+    patch,
+    justification,
+    setJustification,
+    currentId,
+    setCreatedId,
+  } = useEventDraft(initial, detail, eventId)
   const data = useEventFormData(form, detail)
   const { type, studio, notice, activeHold, tz, nowMs } = data
   const check = useEventCheck(form, currentId)
@@ -190,7 +200,9 @@ function EventForm({
           studio={studio}
           days={days}
           scheduleComplete={scheduleComplete}
-          sponsorName={data.sponsors?.find((s) => s.id === sponsorId)?.displayName}
+          sponsorName={
+            data.sponsors?.find((s) => s.id === sponsorId)?.displayName
+          }
           selectedLines={selectedLinesOf(form, data.equipmentTypes)}
           check={check}
           submitState={submitState}

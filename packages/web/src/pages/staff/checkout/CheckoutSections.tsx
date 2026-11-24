@@ -73,7 +73,8 @@ export function BlockersAlert({
               {b.message}{" "}
               <span className="text-muted-foreground">
                 (
-                {b.overridable ? "can be overridden" : "must be resolved first"})
+                {b.overridable ? "can be overridden" : "must be resolved first"}
+                )
               </span>
               <BlockerNextStep code={b.code} eventId={eventId} />
             </li>

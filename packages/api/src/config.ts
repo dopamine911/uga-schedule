@@ -13,7 +13,8 @@ export const config = {
   /** Campus time zone (overview §8). */
   tz: process.env.CAMPUS_TZ ?? "America/New_York",
   /** Signs session cookies and calendar feed links. Required outside dev mode (checked at server start). */
-  sessionSecret: process.env.SESSION_SECRET ?? (devMode ? "dev-only-secret-change-me" : ""),
+  sessionSecret:
+    process.env.SESSION_SECRET ?? (devMode ? "dev-only-secret-change-me" : ""),
   /** SSO replaces dev login in production (F-001). */
   devMode,
   /** Background job interval. */

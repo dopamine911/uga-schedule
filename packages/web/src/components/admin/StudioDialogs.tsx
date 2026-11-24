@@ -59,8 +59,8 @@ function DeactivateStudioDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Deactivate {name}?</AlertDialogTitle>
           <AlertDialogDescription>
-            New requests for this studio are blocked. Open requests and
-            events in it are flagged for review.
+            New requests for this studio are blocked. Open requests and events
+            in it are flagged for review.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -298,7 +298,8 @@ export function HoursDialog({
                   onCheckedChange={(x) =>
                     editDay(i, (day) => ({
                       open: x,
-                      windows: day.windows.length > 0 ? day.windows : [DEFAULT_WINDOW],
+                      windows:
+                        day.windows.length > 0 ? day.windows : [DEFAULT_WINDOW],
                     }))
                   }
                   aria-label={`${label} open`}

@@ -32,8 +32,8 @@ function DatesChangedAlert() {
         Enrolled students' grants will follow the new dates
       </AlertTitle>
       <AlertDescription>
-        Every course grant of this offering moves to the new start and end
-        dates when you save.
+        Every course grant of this offering moves to the new start and end dates
+        when you save.
       </AlertDescription>
     </Alert>
   )

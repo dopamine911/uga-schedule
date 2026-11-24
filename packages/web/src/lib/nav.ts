@@ -157,7 +157,9 @@ function matches(pattern: string, pathname: string): boolean {
 
 /** The most specific known route containing `pathname` (drives the page icon and the highlighted nav item). */
 export function routeFor(pathname: string): NavItem | undefined {
-  return ALL.filter((i) => matches(i.to, pathname)).sort((a, b) => b.to.length - a.to.length)[0]
+  return ALL.filter((i) => matches(i.to, pathname)).sort(
+    (a, b) => b.to.length - a.to.length
+  )[0]
 }
 
 export function routeIcon(pathname: string): LucideIcon {

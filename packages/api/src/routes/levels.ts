@@ -1,5 +1,16 @@
 import { REVIEWABLE, effectiveLevel, isLocalDate } from "@studio/domain"
-import { and, asc, count, desc, eq, inArray, isNull, or, gte, sql } from "drizzle-orm"
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  or,
+  gte,
+  sql,
+} from "drizzle-orm"
 import { Hono } from "hono"
 import { randomUUID } from "node:crypto"
 import { z } from "zod"
@@ -27,23 +38,32 @@ import { today } from "./users.ts"
 
 // F-002: levels, courses, enrolments and manual grants.
 
-export type GrantStatus = "scheduled" | "active" | "expiring" | "expired" | "revoked"
+export type GrantStatus =
+  | "scheduled"
+  | "active"
+  | "expiring"
+  | "expired"
+  | "revoked"
 
 /** Status label for a grant on `day` (F-002 §5). */
 export function grantStatus(
   g: { validFrom: string; validUntil: string | null; revokedOn: string | null },
   day: string,
-  warnDays: number,
+  warnDays: number
 ): GrantStatus {
   if (g.revokedOn !== null) return "revoked"
   if (g.validFrom > day) return "scheduled"
   if (g.validUntil !== null && g.validUntil < day) return "expired"
-  if (g.validUntil !== null && daysBetween(day, g.validUntil) <= warnDays) return "expiring"
+  if (g.validUntil !== null && daysBetween(day, g.validUntil) <= warnDays)
+    return "expiring"
   return "active"
 }
 
 function daysBetween(from: string, to: string): number {
-  return (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000
+  return (
+    (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
+    86_400_000
+  )
 }
 
 export interface GrantView {
@@ -86,7 +106,10 @@ export function listGrants(db: DB, userId: string): GrantView[] {
     .from(levelGrants)
     .innerJoin(levels, eq(levels.id, levelGrants.levelId))
     .leftJoin(enrollments, eq(enrollments.id, levelGrants.enrollmentId))
-    .leftJoin(courseOfferings, eq(courseOfferings.id, enrollments.courseOfferingId))
+    .leftJoin(
+      courseOfferings,
+      eq(courseOfferings.id, enrollments.courseOfferingId)
+    )
     .where(eq(levelGrants.userId, userId))
     .orderBy(desc(levels.rank), desc(levelGrants.validFrom))
     .all()
@@ -94,7 +117,11 @@ export function listGrants(db: DB, userId: string): GrantView[] {
 }
 
 function courseOf(db: DB, id: string) {
-  const c = db.select().from(courseOfferings).where(eq(courseOfferings.id, id)).get()
+  const c = db
+    .select()
+    .from(courseOfferings)
+    .where(eq(courseOfferings.id, id))
+    .get()
   if (!c) throw notFound("Course")
   return c
 }
@@ -115,15 +142,25 @@ function reviewableEventIds(db: DB): string[] {
 }
 
 /** Enrols users in a course with a course grant (BR-002-03). Idempotent; returns ids newly enrolled. */
-function enrollUsers(db: DB, courseId: string, userIds: readonly string[], actorId: string): string[] {
+function enrollUsers(
+  db: DB,
+  courseId: string,
+  userIds: readonly string[],
+  actorId: string
+): string[] {
   const course = courseOf(db, courseId)
   const active = new Set(
     db
       .select({ userId: enrollments.userId })
       .from(enrollments)
-      .where(and(eq(enrollments.courseOfferingId, courseId), eq(enrollments.status, "enrolled")))
+      .where(
+        and(
+          eq(enrollments.courseOfferingId, courseId),
+          eq(enrollments.status, "enrolled")
+        )
+      )
       .all()
-      .map((r) => r.userId),
+      .map((r) => r.userId)
   )
   const added: string[] = []
   for (const userId of new Set(userIds)) {
@@ -158,14 +195,31 @@ function enrollUsers(db: DB, courseId: string, userIds: readonly string[], actor
 }
 
 /** Drops an enrollment and revokes its course grant from today (US-002-04). Returns flagged event ids. */
-function dropEnrollment(db: DB, enrollmentId: string, actorId: string): string[] {
-  const e = db.select().from(enrollments).where(eq(enrollments.id, enrollmentId)).get()
+function dropEnrollment(
+  db: DB,
+  enrollmentId: string,
+  actorId: string
+): string[] {
+  const e = db
+    .select()
+    .from(enrollments)
+    .where(eq(enrollments.id, enrollmentId))
+    .get()
   if (!e) throw notFound("Enrollment")
   const day = today()
-  db.update(enrollments).set({ status: "dropped", droppedOn: day }).where(eq(enrollments.id, e.id)).run()
+  db.update(enrollments)
+    .set({ status: "dropped", droppedOn: day })
+    .where(eq(enrollments.id, e.id))
+    .run()
   db.update(levelGrants)
-    .set({ revokedOn: day, revokedBy: actorId, revokeReason: "Dropped from course" })
-    .where(and(eq(levelGrants.enrollmentId, e.id), isNull(levelGrants.revokedOn)))
+    .set({
+      revokedOn: day,
+      revokedBy: actorId,
+      revokeReason: "Dropped from course",
+    })
+    .where(
+      and(eq(levelGrants.enrollmentId, e.id), isNull(levelGrants.revokedOn))
+    )
     .run()
   audit(db, {
     actorId,
@@ -182,7 +236,12 @@ function activeEnrollments(db: DB, courseId: string) {
   return db
     .select()
     .from(enrollments)
-    .where(and(eq(enrollments.courseOfferingId, courseId), eq(enrollments.status, "enrolled")))
+    .where(
+      and(
+        eq(enrollments.courseOfferingId, courseId),
+        eq(enrollments.status, "enrolled")
+      )
+    )
     .all()
 }
 
@@ -216,32 +275,54 @@ const grantBody = z.object({
   validUntil: isoDate.nullish(),
   reason: z.string().trim().min(1, "A reason is required."),
 })
-const reasonBody = z.object({ reason: z.string().trim().min(1, "A reason is required.") })
+const reasonBody = z.object({
+  reason: z.string().trim().min(1, "A reason is required."),
+})
 
 function assertRange(from: string, until: string | null | undefined): void {
-  if (until && until < from) throw badRequest("INVALID_DATES", "The end date must be on or after the start date.")
+  if (until && until < from)
+    throw badRequest(
+      "INVALID_DATES",
+      "The end date must be on or after the start date."
+    )
 }
 
 export const routes = new Hono<AppEnv>()
   .get("/", (c) => {
     requireUser(c)
     return c.json(
-      c.var.db.select().from(levels).orderBy(asc(levels.rank)).all(),
+      c.var.db.select().from(levels).orderBy(asc(levels.rank)).all()
     )
   })
   .post("/", v("json", levelBody), (c) => {
     const me = authorize(c, "level.manage")
     const db = c.var.db
     const body = c.req.valid("json")
-    if (db.select({ id: levels.id }).from(levels).where(eq(levels.rank, body.rank)).get())
+    if (
+      db
+        .select({ id: levels.id })
+        .from(levels)
+        .where(eq(levels.rank, body.rank))
+        .get()
+    )
       throw conflict("RANK_TAKEN", "Another level already has this rank.")
     const level = db.transaction(() => {
       const row = db
         .insert(levels)
-        .values({ name: body.name, rank: body.rank, description: body.description ?? "" })
+        .values({
+          name: body.name,
+          rank: body.rank,
+          description: body.description ?? "",
+        })
         .returning()
         .get()
-      audit(db, { actorId: me.id, action: "level.create", entityType: "level", entityId: row.id, after: row })
+      audit(db, {
+        actorId: me.id,
+        action: "level.create",
+        entityType: "level",
+        entityId: row.id,
+        after: row,
+      })
       return row
     })
     return c.json(level, 201)
@@ -253,7 +334,13 @@ export const routes = new Hono<AppEnv>()
     const before = levelOf(db, id)
     const body = c.req.valid("json")
     if (body.rank !== undefined && body.rank !== before.rank) {
-      if (db.select({ id: levels.id }).from(levels).where(eq(levels.rank, body.rank)).get())
+      if (
+        db
+          .select({ id: levels.id })
+          .from(levels)
+          .where(eq(levels.rank, body.rank))
+          .get()
+      )
         throw conflict("RANK_TAKEN", "Another level already has this rank.")
     }
     if (body.active === false && before.active) {
@@ -265,18 +352,30 @@ export const routes = new Hono<AppEnv>()
           and(
             eq(levelGrants.levelId, id),
             isNull(levelGrants.revokedOn),
-            or(isNull(levelGrants.validUntil), gte(levelGrants.validUntil, day)),
-          ),
+            or(isNull(levelGrants.validUntil), gte(levelGrants.validUntil, day))
+          )
         )
         .all().length
-      const classes = db.select({ id: equipmentClasses.id }).from(equipmentClasses).where(eq(equipmentClasses.minLevelId, id)).all().length
-      const studioCount = db.select({ id: studios.id }).from(studios).where(eq(studios.minLevelId, id)).all().length
+      const classes = db
+        .select({ id: equipmentClasses.id })
+        .from(equipmentClasses)
+        .where(eq(equipmentClasses.minLevelId, id))
+        .all().length
+      const studioCount = db
+        .select({ id: studios.id })
+        .from(studios)
+        .where(eq(studios.minLevelId, id))
+        .all().length
       if (activeGrants || classes || studioCount)
-        throw conflict("LEVEL_IN_USE", "This level is still used by active grants, equipment classes, or studios.", {
-          activeGrants,
-          classes,
-          studios: studioCount,
-        })
+        throw conflict(
+          "LEVEL_IN_USE",
+          "This level is still used by active grants, equipment classes, or studios.",
+          {
+            activeGrants,
+            classes,
+            studios: studioCount,
+          }
+        )
     }
     const flaggedEvents = db.transaction(() => {
       const after = db
@@ -290,9 +389,18 @@ export const routes = new Hono<AppEnv>()
         .where(eq(levels.id, id))
         .returning()
         .get()
-      audit(db, { actorId: me.id, action: "level.update", entityType: "level", entityId: id, before, after })
+      audit(db, {
+        actorId: me.id,
+        action: "level.update",
+        entityType: "level",
+        entityId: id,
+        before,
+        after,
+      })
       // BR-002-01: rank changes re-evaluate every open event.
-      return body.rank !== undefined && body.rank !== before.rank ? recheckEvents(db, { eventIds: reviewableEventIds(db) }) : []
+      return body.rank !== undefined && body.rank !== before.rank
+        ? recheckEvents(db, { eventIds: reviewableEventIds(db) })
+        : []
     })
     return c.json({ ...levelOf(db, id), flaggedEvents })
   })
@@ -302,10 +410,15 @@ export const routes = new Hono<AppEnv>()
     const day = today()
     const grants = listGrants(db, me.id)
     const rank = effectiveLevel(grantsFor(db, me.id), day)
-    const level = rank > 0 ? db.select().from(levels).where(eq(levels.rank, rank)).get() : undefined
+    const level =
+      rank > 0
+        ? db.select().from(levels).where(eq(levels.rank, rank)).get()
+        : undefined
     return c.json({
       grants,
-      effectiveLevelToday: level ? { id: level.id, name: level.name, rank: level.rank } : null,
+      effectiveLevelToday: level
+        ? { id: level.id, name: level.name, rank: level.rank }
+        : null,
     })
   })
   .get("/courses", (c) => {
@@ -325,14 +438,14 @@ export const routes = new Hono<AppEnv>()
         .where(eq(enrollments.status, "enrolled"))
         .groupBy(enrollments.courseOfferingId)
         .all()
-        .map((r) => [r.courseId, r.n] as const),
+        .map((r) => [r.courseId, r.n] as const)
     )
     return c.json(
       rows.map((r) => ({
         ...r.course,
         level: { id: r.level.id, name: r.level.name, rank: r.level.rank },
         enrolledCount: enrolled.get(r.course.id) ?? 0,
-      })),
+      }))
     )
   })
   .get("/courses/:id", (c) => {
@@ -381,7 +494,13 @@ export const routes = new Hono<AppEnv>()
         .values({ ...body, section: body.section ?? "" })
         .returning()
         .get()
-      audit(db, { actorId: me.id, action: "course.create", entityType: "course", entityId: row.id, after: row })
+      audit(db, {
+        actorId: me.id,
+        action: "course.create",
+        entityType: "course",
+        entityId: row.id,
+        after: row,
+      })
       return row
     })
     return c.json(course, 201)
@@ -396,8 +515,10 @@ export const routes = new Hono<AppEnv>()
     const endDate = body.endDate ?? before.endDate
     assertRange(startDate, endDate)
     if (body.levelId) levelOf(db, body.levelId)
-    const datesChanged = startDate !== before.startDate || endDate !== before.endDate
-    const levelChanged = body.levelId !== undefined && body.levelId !== before.levelId
+    const datesChanged =
+      startDate !== before.startDate || endDate !== before.endDate
+    const levelChanged =
+      body.levelId !== undefined && body.levelId !== before.levelId
     const flaggedEvents = db.transaction(() => {
       const after = db
         .update(courseOfferings)
@@ -412,7 +533,14 @@ export const routes = new Hono<AppEnv>()
         .where(eq(courseOfferings.id, id))
         .returning()
         .get()
-      audit(db, { actorId: me.id, action: "course.update", entityType: "course", entityId: id, before, after })
+      audit(db, {
+        actorId: me.id,
+        action: "course.update",
+        entityType: "course",
+        entityId: id,
+        before,
+        after,
+      })
       if (!datesChanged && !levelChanged) return 0
       // BR-002-03: course grants follow the course offering.
       const enrolled = db
@@ -422,12 +550,16 @@ export const routes = new Hono<AppEnv>()
         .all()
       if (enrolled.length === 0) return 0
       db.update(levelGrants)
-        .set({ validFrom: startDate, validUntil: endDate, levelId: after.levelId })
+        .set({
+          validFrom: startDate,
+          validUntil: endDate,
+          levelId: after.levelId,
+        })
         .where(
           inArray(
             levelGrants.enrollmentId,
-            enrolled.map((e) => e.enrollmentId),
-          ),
+            enrolled.map((e) => e.enrollmentId)
+          )
         )
         .run()
       let flagged = 0
@@ -449,12 +581,18 @@ export const routes = new Hono<AppEnv>()
         .from(users)
         .where(inArray(users.id, userIds))
         .all()
-        .map((r) => r.id),
+        .map((r) => r.id)
     )
     const unknown = userIds.filter((u) => !known.has(u))
-    if (unknown.length) throw badRequest("UNKNOWN_USER", "Some users do not exist.", { userIds: unknown })
+    if (unknown.length)
+      throw badRequest("UNKNOWN_USER", "Some users do not exist.", {
+        userIds: unknown,
+      })
     const added = db.transaction(() => enrollUsers(db, id, userIds, me.id))
-    return c.json({ added: added.length, unchanged: new Set(userIds).size - added.length })
+    return c.json({
+      added: added.length,
+      unchanged: new Set(userIds).size - added.length,
+    })
   })
   .post("/courses/:id/enrollments/:enrollmentId/drop", (c) => {
     const me = authorize(c, "course.manage")
@@ -464,10 +602,16 @@ export const routes = new Hono<AppEnv>()
     const e = db
       .select()
       .from(enrollments)
-      .where(and(eq(enrollments.id, c.req.param("enrollmentId")), eq(enrollments.courseOfferingId, id)))
+      .where(
+        and(
+          eq(enrollments.id, c.req.param("enrollmentId")),
+          eq(enrollments.courseOfferingId, id)
+        )
+      )
       .get()
     if (!e) throw notFound("Enrollment")
-    if (e.status !== "enrolled") throw conflict("NOT_ENROLLED", "This enrolment is already dropped.")
+    if (e.status !== "enrolled")
+      throw conflict("NOT_ENROLLED", "This enrolment is already dropped.")
     const flagged = db.transaction(() => dropEnrollment(db, e.id, me.id))
     return c.json({ id: e.id, status: "dropped", flaggedEvents: flagged })
   })
@@ -476,7 +620,14 @@ export const routes = new Hono<AppEnv>()
     const db = c.var.db
     const id = c.req.param("id")
     const course = courseOf(db, id)
-    const wanted = [...new Set(c.req.valid("json").emails.map((e) => e.trim().toLowerCase()).filter(Boolean))]
+    const wanted = [
+      ...new Set(
+        c.req
+          .valid("json")
+          .emails.map((e) => e.trim().toLowerCase())
+          .filter(Boolean)
+      ),
+    ]
     // Disabled accounts still match, so a roster that lists them does not drop their enrolment.
     const matched = wanted.length
       ? db
@@ -486,11 +637,17 @@ export const routes = new Hono<AppEnv>()
           .all()
       : []
     // A roster matching nobody is a wrong file or a typo, not a request to drop the whole course.
-    if (matched.length === 0) throw badRequest("ROSTER_NO_MATCH", "None of these emails match a user, so nothing was changed.")
+    if (matched.length === 0)
+      throw badRequest(
+        "ROSTER_NO_MATCH",
+        "None of these emails match a user, so nothing was changed."
+      )
     const idByEmail = new Map(matched.map((u) => [u.email.toLowerCase(), u.id]))
     const unmatched = wanted.filter((e) => !idByEmail.has(e))
     const wantedIds = new Set(idByEmail.values())
-    const activeIds = new Set(matched.filter((u) => u.status === "active").map((u) => u.id))
+    const activeIds = new Set(
+      matched.filter((u) => u.status === "active").map((u) => u.id)
+    )
 
     const result = db.transaction(() => {
       const current = activeEnrollments(db, id)
@@ -499,7 +656,8 @@ export const routes = new Hono<AppEnv>()
       const toDrop = current.filter((e) => !wantedIds.has(e.userId))
       const added = enrollUsers(db, id, toAdd, me.id)
       let flaggedEvents = 0
-      for (const e of toDrop) flaggedEvents += dropEnrollment(db, e.id, me.id).length
+      for (const e of toDrop)
+        flaggedEvents += dropEnrollment(db, e.id, me.id).length
       const summary = {
         added: added.length,
         dropped: toDrop.length,
@@ -517,7 +675,8 @@ export const routes = new Hono<AppEnv>()
       notify(db, {
         code: "ROSTER_IMPORT_SUMMARY",
         to: [me.id],
-        subject: `Roster imported: ${course.courseCode} ${course.section}`.trim(),
+        subject:
+          `Roster imported: ${course.courseCode} ${course.section}`.trim(),
         body: `Added ${summary.added}, dropped ${summary.dropped}, unchanged ${summary.unchanged}, unmatched ${summary.unmatched.length}. Events flagged for review: ${flaggedEvents}.`,
         key: `ROSTER_IMPORT:${id}:${randomUUID()}`,
       })
@@ -525,24 +684,41 @@ export const routes = new Hono<AppEnv>()
     })
     return c.json(result)
   })
-  .get("/grants", v("query", z.object({ userId: z.string().optional() })), (c) => {
-    authorize(c, "grant.manage")
-    const db = c.var.db
-    const userId = c.req.valid("query").userId
-    const rows = db
-      .select({ id: levelGrants.id, userId: levelGrants.userId, name: users.displayName, email: users.email })
-      .from(levelGrants)
-      .innerJoin(users, eq(users.id, levelGrants.userId))
-      .where(userId ? eq(levelGrants.userId, userId) : undefined)
-      .orderBy(asc(users.displayName))
-      .all()
-    const byUser = new Map<string, { id: string; displayName: string; email: string; grants: GrantView[] }>()
-    for (const r of rows) {
-      if (byUser.has(r.userId)) continue
-      byUser.set(r.userId, { id: r.userId, displayName: r.name, email: r.email, grants: listGrants(db, r.userId) })
+  .get(
+    "/grants",
+    v("query", z.object({ userId: z.string().optional() })),
+    (c) => {
+      authorize(c, "grant.manage")
+      const db = c.var.db
+      const userId = c.req.valid("query").userId
+      const rows = db
+        .select({
+          id: levelGrants.id,
+          userId: levelGrants.userId,
+          name: users.displayName,
+          email: users.email,
+        })
+        .from(levelGrants)
+        .innerJoin(users, eq(users.id, levelGrants.userId))
+        .where(userId ? eq(levelGrants.userId, userId) : undefined)
+        .orderBy(asc(users.displayName))
+        .all()
+      const byUser = new Map<
+        string,
+        { id: string; displayName: string; email: string; grants: GrantView[] }
+      >()
+      for (const r of rows) {
+        if (byUser.has(r.userId)) continue
+        byUser.set(r.userId, {
+          id: r.userId,
+          displayName: r.name,
+          email: r.email,
+          grants: listGrants(db, r.userId),
+        })
+      }
+      return c.json([...byUser.values()])
     }
-    return c.json([...byUser.values()])
-  })
+  )
   .post("/grants", v("json", grantBody), (c) => {
     const me = authorize(c, "grant.manage")
     const db = c.var.db
@@ -550,7 +726,13 @@ export const routes = new Hono<AppEnv>()
     const validFrom = body.validFrom ?? today()
     const validUntil = body.validUntil ?? null
     assertRange(validFrom, validUntil)
-    if (!db.select({ id: users.id }).from(users).where(eq(users.id, body.userId)).get())
+    if (
+      !db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, body.userId))
+        .get()
+    )
       throw notFound("User")
     levelOf(db, body.levelId)
     const row = db.transaction(() => {
@@ -585,7 +767,8 @@ export const routes = new Hono<AppEnv>()
     const id = c.req.param("id")
     const g = db.select().from(levelGrants).where(eq(levelGrants.id, id)).get()
     if (!g) throw notFound("Grant")
-    if (g.revokedOn) throw conflict("ALREADY_REVOKED", "This grant is already revoked.")
+    if (g.revokedOn)
+      throw conflict("ALREADY_REVOKED", "This grant is already revoked.")
     const { reason } = c.req.valid("json")
     const flaggedEvents = db.transaction(() => {
       db.update(levelGrants)

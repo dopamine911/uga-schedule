@@ -6,12 +6,12 @@ Students book university studio time and equipment. Each booking needs a sponsor
 
 All code lives in one pnpm workspace under `packages/`:
 
-| Path | Package | What |
-|---|---|---|
+| Path              | Package          | What                                                                                                                                      |
+| ----------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `packages/domain` | `@studio/domain` | Pure TypeScript business rules: permissions, levels, availability, submission checks, event state machine, stage scheduling. Unit-tested. |
-| `packages/api` | `@studio/api` | Hono HTTP API, SQLite via Drizzle (better-sqlite3), background jobs, ICS feeds |
-| `packages/web` | `@studio/web` | React 19 + Vite + React Router + TanStack Query + shadcn/ui. Typed API client via `hono/client`. |
-| `specs` | | Product specs (F-001 … F-010) |
+| `packages/api`    | `@studio/api`    | Hono HTTP API, SQLite via Drizzle (better-sqlite3), background jobs, ICS feeds                                                            |
+| `packages/web`    | `@studio/web`    | React 19 + Vite + React Router + TanStack Query + shadcn/ui. Typed API client via `hono/client`.                                          |
+| `specs`           |                  | Product specs (F-001 … F-010)                                                                                                             |
 
 `web` depends on `domain` and on `api`'s route types; `api` depends on `domain`; `domain` depends on nothing in the repo.
 
@@ -29,14 +29,14 @@ pnpm dev          # API on :3001, web on :5173 (proxies /api and /ics)
 
 Open http://localhost:5173 and sign in as any demo user. Dev sign-in replaces SSO.
 
-| User | Role |
-|---|---|
-| Ada Admin | Admin |
-| Eli Manager | Equipment manager |
-| Sam Staff | Studio staff (Studio A, Studio C) |
-| Tara Tech | Studio staff (Studio B) |
-| Prof. Priya Patel, Prof. Minh Nguyen | Sponsors |
-| Alice (L1), Ben (L2 + L3 expiring), Chloe (L3), Dan (no level) | Students |
+| User                                                           | Role                              |
+| -------------------------------------------------------------- | --------------------------------- |
+| Ada Admin                                                      | Admin                             |
+| Eli Manager                                                    | Equipment manager                 |
+| Sam Staff                                                      | Studio staff (Studio A, Studio C) |
+| Tara Tech                                                      | Studio staff (Studio B)           |
+| Prof. Priya Patel, Prof. Minh Nguyen                           | Sponsors                          |
+| Alice (L1), Ben (L2 + L3 expiring), Chloe (L3), Dan (no level) | Students                          |
 
 The **clock button** in the header is available in dev mode only. It moves time forward and runs the background jobs: reminders, request expiry, no-shows, overdue returns, lost items, and hold auto-clear. Use it to demo the full lifecycle without waiting.
 
@@ -62,6 +62,7 @@ React Doctor also runs on every pull request and on pushes to `main` (`.github/w
 Built: the full request → sponsor approval → staff confirmation → checkout → check-in → results flow. Also levels, course grants and CSV roster import, inventory with per-unit status, studios with opening hours and blackouts, event types with reminder/task schedules, holds, in-app notifications, ICS calendar feeds, the audit log, and dev time travel.
 
 Deferred (spec reference in brackets):
+
 - University SSO; dev login stands in for it (F-001).
 - Google and Outlook calendar API push; ICS feeds work with every client (F-009).
 - Email delivery; notifications are in-app and logged to the API console (F-010).

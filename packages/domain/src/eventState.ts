@@ -53,7 +53,10 @@ const T: Record<EventState, Partial<Record<EventAction, EventState>>> = {
   NoShow: {},
 }
 
-export function nextState(state: EventState, action: EventAction): EventState | null {
+export function nextState(
+  state: EventState,
+  action: EventAction
+): EventState | null {
   return T[state][action] ?? null
 }
 
@@ -85,6 +88,7 @@ export interface EventEditDiff {
 
 export function editAction(diff: EventEditDiff): EventAction | null {
   if (diff.sponsorChanged || diff.typeChanged) return "change_approval"
-  if (diff.daysChanged || diff.studioChanged || diff.equipmentIncreased) return "change_material"
+  if (diff.daysChanged || diff.studioChanged || diff.equipmentIncreased)
+    return "change_material"
   return null
 }

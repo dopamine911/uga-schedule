@@ -1,12 +1,37 @@
 import { FileTextIcon } from "lucide-react"
 import { IconTitle } from "@/components/common"
 import type { DraftForm } from "@/components/events/draft"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { type EventTypeRow, isStudioLocked, lockReasonOf, type StudioRow, studioRuleSuffix } from "./rules"
+import {
+  type EventTypeRow,
+  isStudioLocked,
+  lockReasonOf,
+  type StudioRow,
+  studioRuleSuffix,
+} from "./rules"
 
 interface BasicsCardProps {
   form: DraftForm
@@ -20,20 +45,37 @@ interface BasicsCardProps {
 }
 
 /** Section 1: what the session is and where it happens. */
-export function BasicsCard({ form, patch, onTypeChange, types, typesPending, studios, type, studio }: BasicsCardProps) {
+export function BasicsCard({
+  form,
+  patch,
+  onTypeChange,
+  types,
+  typesPending,
+  studios,
+  type,
+  studio,
+}: BasicsCardProps) {
   return (
     <Card>
       <CardHeader>
         <CardTitle>
           <IconTitle icon={FileTextIcon}>1. Basics</IconTitle>
         </CardTitle>
-        <CardDescription>What the session is and where it happens.</CardDescription>
+        <CardDescription>
+          What the session is and where it happens.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor="title">Title</FieldLabel>
-            <Input id="title" required maxLength={200} value={form.title} onChange={(e) => patch({ title: e.target.value })} />
+            <Input
+              id="title"
+              required
+              maxLength={200}
+              value={form.title}
+              onChange={(e) => patch({ title: e.target.value })}
+            />
           </Field>
           <Field>
             <FieldLabel htmlFor="description">Description</FieldLabel>
@@ -85,7 +127,9 @@ function EventTypeField({
       <FieldLabel htmlFor="event-type">Event type</FieldLabel>
       <Select value={value} onValueChange={onTypeChange}>
         <SelectTrigger id="event-type" className="w-full">
-          <SelectValue placeholder={typesPending ? "Loading…" : "Choose an event type"} />
+          <SelectValue
+            placeholder={typesPending ? "Loading…" : "Choose an event type"}
+          />
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
@@ -100,7 +144,13 @@ function EventTypeField({
   )
 }
 
-function EventTypeOption({ type, studios }: { type: EventTypeRow; studios: StudioRow[] | undefined }) {
+function EventTypeOption({
+  type,
+  studios,
+}: {
+  type: EventTypeRow
+  studios: StudioRow[] | undefined
+}) {
   const lock = lockReasonOf(type, studios)
   return (
     <SelectItem value={type.id} disabled={lock !== null}>
@@ -142,7 +192,11 @@ function StudioField({
       <FieldLabel htmlFor="studio">Studio</FieldLabel>
       <Select value={value} onValueChange={onStudioChange} disabled={!type}>
         <SelectTrigger id="studio" className="w-full">
-          <SelectValue placeholder={type ? "Choose a studio" : "Choose an event type first"} />
+          <SelectValue
+            placeholder={
+              type ? "Choose a studio" : "Choose an event type first"
+            }
+          />
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
@@ -157,7 +211,15 @@ function StudioField({
   )
 }
 
-function StudioOption({ id, name, rule }: { id: string; name: string; rule: StudioRow | undefined }) {
+function StudioOption({
+  id,
+  name,
+  rule,
+}: {
+  id: string
+  name: string
+  rule: StudioRow | undefined
+}) {
   return (
     <SelectItem value={id} disabled={isStudioLocked(rule)}>
       {name}
@@ -171,8 +233,11 @@ function StudioHint({ studio }: { studio: StudioRow | undefined }) {
   if (!studio.eligibleToday)
     return (
       <FieldError>
-        Requires {studio.minLevel.name}. Your access does not cover this studio yet.
+        Requires {studio.minLevel.name}. Your access does not cover this studio
+        yet.
       </FieldError>
     )
-  return <FieldDescription>Studio minimum: {studio.minLevel.name}</FieldDescription>
+  return (
+    <FieldDescription>Studio minimum: {studio.minLevel.name}</FieldDescription>
+  )
 }

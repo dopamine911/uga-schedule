@@ -100,7 +100,10 @@ export function StaffDecisionActions({
     await decide(
       () =>
         unwrap(
-          api.events[":id"]["staff-decision"].$post({ param: { id: ev.id }, json })
+          api.events[":id"]["staff-decision"].$post({
+            param: { id: ev.id },
+            json,
+          })
         ),
       `Confirmed “${ev.title}”`
     )
@@ -111,7 +114,10 @@ export function StaffDecisionActions({
     await decide(
       () =>
         unwrap(
-          api.events[":id"]["staff-decision"].$post({ param: { id: ev.id }, json })
+          api.events[":id"]["staff-decision"].$post({
+            param: { id: ev.id },
+            json,
+          })
         ),
       `Rejected “${ev.title}”`
     )
@@ -161,7 +167,10 @@ export function ReviewResolveAction({ ev }: { ev: EventSummary }) {
     await decide(
       () =>
         unwrap(
-          api.events[":id"]["resolve-review"].$post({ param: { id: ev.id }, json })
+          api.events[":id"]["resolve-review"].$post({
+            param: { id: ev.id },
+            json,
+          })
         ),
       `Review resolved for “${ev.title}”`
     )

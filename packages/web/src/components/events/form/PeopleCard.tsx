@@ -1,8 +1,17 @@
 import { UsersIcon } from "lucide-react"
 import { IconTitle } from "@/components/common"
-import { ParticipantsPicker, SponsorSelect } from "@/components/events/PeoplePicker"
+import {
+  ParticipantsPicker,
+  SponsorSelect,
+} from "@/components/events/PeoplePicker"
 import type { DraftForm } from "@/components/events/draft"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 
 /** Section 4: the sponsor who approves the request and the participants. */
@@ -23,7 +32,8 @@ export function PeopleCard({
           <IconTitle icon={UsersIcon}>4. People</IconTitle>
         </CardTitle>
         <CardDescription>
-          Your sponsor approves the request. Participants see it on their calendar.
+          Your sponsor approves the request. Participants see it on their
+          calendar.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -36,7 +46,9 @@ export function PeopleCard({
               onValueChange={(sponsorId) =>
                 patch({
                   sponsorId,
-                  participants: form.participants.filter((p) => p.id !== sponsorId),
+                  participants: form.participants.filter(
+                    (p) => p.id !== sponsorId
+                  ),
                 })
               }
             />

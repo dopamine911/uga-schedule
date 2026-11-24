@@ -118,7 +118,9 @@ export function CheckinBody({
         readyCount={entries.readyCount}
         total={total}
         disabled={
-          entries.readyCount === 0 || entries.anyInvalid || entries.submitPending
+          entries.readyCount === 0 ||
+          entries.anyInvalid ||
+          entries.submitPending
         }
         pending={entries.submitPending}
         onSubmit={entries.onSubmit}

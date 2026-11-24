@@ -8,9 +8,27 @@ import {
 } from "@/components/events/DayTimePicker"
 import { type DraftForm, withNumDays } from "@/components/events/draft"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import {
   dayAt,
@@ -44,14 +62,29 @@ interface ScheduleCardProps {
 
 /** Section 2: consecutive days, one start and end time per day. */
 export function ScheduleCard(props: ScheduleCardProps) {
-  const { form, setForm, patch, type, studio, notice, today, tz, nowMs, availability, availabilityError, problems } = props
+  const {
+    form,
+    setForm,
+    patch,
+    type,
+    studio,
+    notice,
+    today,
+    tz,
+    nowMs,
+    availability,
+    availabilityError,
+    problems,
+  } = props
   return (
     <Card>
       <CardHeader>
         <CardTitle>
           <IconTitle icon={CalendarClockIcon}>2. Schedule</IconTitle>
         </CardTitle>
-        <CardDescription>Consecutive days, one start and end time per day.</CardDescription>
+        <CardDescription>
+          Consecutive days, one start and end time per day.
+        </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         <FieldGroup>
@@ -102,20 +135,26 @@ function FirstDayField({
 }) {
   return (
     <Field className="w-auto">
-      <FieldLabel htmlFor="first-day">{form.times.length > 1 ? "Dates" : "Date"}</FieldLabel>
+      <FieldLabel htmlFor="first-day">
+        {form.times.length > 1 ? "Dates" : "Date"}
+      </FieldLabel>
       <DatePicker
         id="first-day"
         value={form.firstDay}
         onChange={(firstDay) => patch({ firstDay })}
         min={today}
         isDisabled={(day) => isDayDisabled(day, studio, notice, nowMs, tz)}
-        isFlagged={notice ? (day) => isOutsideNotice(day, notice, nowMs, tz) : undefined}
+        isFlagged={
+          notice ? (day) => isOutsideNotice(day, notice, nowMs, tz) : undefined
+        }
         flaggedHint={flaggedHintOf(notice)}
         span={form.times.length}
         placeholder="Choose the first day"
       />
       <FieldDescription>
-        {studio ? "Days the studio is closed are greyed out." : "Choose a studio first to see closed days."}
+        {studio
+          ? "Days the studio is closed are greyed out."
+          : "Choose a studio first to see closed days."}
       </FieldDescription>
     </Field>
   )
@@ -136,9 +175,17 @@ function DayCountField({
     <Field className="w-auto">
       <FieldLabel>Number of days</FieldLabel>
       {maxDays > 7 ? (
-        <DayCountSelect value={form.times.length} maxDays={maxDays} onCount={onCount} />
+        <DayCountSelect
+          value={form.times.length}
+          maxDays={maxDays}
+          onCount={onCount}
+        />
       ) : (
-        <DayCountToggles value={form.times.length} maxDays={maxDays} onCount={onCount} />
+        <DayCountToggles
+          value={form.times.length}
+          maxDays={maxDays}
+          onCount={onCount}
+        />
       )}
       <FieldDescription>{dayCountHintOf(type, maxDays)}</FieldDescription>
     </Field>
@@ -245,7 +292,9 @@ function DayTimeList({
           }
         />
       ))}
-      <p className="text-xs text-muted-foreground">Times are campus time ({tz}).</p>
+      <p className="text-xs text-muted-foreground">
+        Times are campus time ({tz}).
+      </p>
     </div>
   )
 }

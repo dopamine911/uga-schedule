@@ -56,8 +56,8 @@ export function NeedsReviewAlert({ ev }: EventProps) {
       <AlertTitle>Needs review</AlertTitle>
       <AlertDescription>
         Something changed that affects this request:{" "}
-        {ev.reviewReasons.map(humanize).join(", ")}. Studio staff must review
-        it before it can go ahead.
+        {ev.reviewReasons.map(humanize).join(", ")}. Studio staff must review it
+        before it can go ahead.
       </AlertDescription>
     </Alert>
   )
@@ -73,7 +73,9 @@ export function DetailsCard({ ev }: EventProps) {
       </CardHeader>
       <CardContent>
         <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
-          <DetailLabel icon={eventTypeIcon(ev.eventType.name)}>Type</DetailLabel>
+          <DetailLabel icon={eventTypeIcon(ev.eventType.name)}>
+            Type
+          </DetailLabel>
           <dd>{ev.eventType.name}</dd>
           <DetailLabel icon={MapPinIcon}>Studio</DetailLabel>
           <dd>

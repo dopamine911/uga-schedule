@@ -27,7 +27,7 @@ export const routes = new Hono<AppEnv>()
         body: n.body,
         createdAt: n.createdAt,
         readAt: n.readAt,
-      })),
+      }))
     )
   })
   .get("/unread-count", (c) => {
@@ -35,7 +35,12 @@ export const routes = new Hono<AppEnv>()
     const rows = c.var.db
       .select({ id: notifications.id })
       .from(notifications)
-      .where(and(eq(notifications.recipientId, user.id), isNull(notifications.readAt)))
+      .where(
+        and(
+          eq(notifications.recipientId, user.id),
+          isNull(notifications.readAt)
+        )
+      )
       .all()
     return c.json({ count: rows.length })
   })
@@ -44,7 +49,12 @@ export const routes = new Hono<AppEnv>()
     const res = c.var.db
       .update(notifications)
       .set({ readAt: now() })
-      .where(and(eq(notifications.recipientId, user.id), isNull(notifications.readAt)))
+      .where(
+        and(
+          eq(notifications.recipientId, user.id),
+          isNull(notifications.readAt)
+        )
+      )
       .run()
     return c.json({ updated: res.changes })
   })
@@ -54,10 +64,18 @@ export const routes = new Hono<AppEnv>()
     const n = db
       .select()
       .from(notifications)
-      .where(and(eq(notifications.id, c.req.param("id")), eq(notifications.recipientId, user.id)))
+      .where(
+        and(
+          eq(notifications.id, c.req.param("id")),
+          eq(notifications.recipientId, user.id)
+        )
+      )
       .get()
     if (!n) throw notFound("Notification")
     const readAt = n.readAt ?? now()
-    db.update(notifications).set({ readAt }).where(eq(notifications.id, n.id)).run()
+    db.update(notifications)
+      .set({ readAt })
+      .where(eq(notifications.id, n.id))
+      .run()
     return c.json({ id: n.id, readAt })
   })

@@ -14,7 +14,8 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       // Don't retry permission/validation failures.
-      retry: (count, err) => !(err instanceof ApiError && err.status < 500) && count < 2,
+      retry: (count, err) =>
+        !(err instanceof ApiError && err.status < 500) && count < 2,
       refetchOnWindowFocus: false,
     },
   },
@@ -30,5 +31,5 @@ createRoot(document.getElementById("root")!).render(
         </TooltipProvider>
       </QueryClientProvider>
     </ThemeProvider>
-  </StrictMode>,
+  </StrictMode>
 )

@@ -87,7 +87,12 @@ export interface SubmissionContext {
   requesterId: string
   requesterHasActiveHold: boolean
   sponsor: { id: string; active: boolean; isSponsor: boolean } | null
-  eventType: { active: boolean; maxDays: number; maxHoursPerDay: number; allowedStudioIds: readonly string[] }
+  eventType: {
+    active: boolean
+    maxDays: number
+    maxHoursPerDay: number
+    allowedStudioIds: readonly string[]
+  }
   studio: {
     id: string
     active: boolean
@@ -113,19 +118,38 @@ export interface SubmissionContext {
 export interface DayInterval extends DayInput, Interval {}
 
 /** Validates day shapes and converts to UTC intervals. Returns issues for malformed days. */
-export function toIntervals(days: readonly DayInput[], tz: string): { intervals: DayInterval[]; issues: Issue[] } {
+export function toIntervals(
+  days: readonly DayInput[],
+  tz: string
+): { intervals: DayInterval[]; issues: Issue[] } {
   const issues: Issue[] = []
   const intervals: DayInterval[] = []
   for (const d of days) {
-    if (!isLocalDate(d.day) || !isLocalTime(d.startTime) || !isLocalTime(d.endTime)) {
-      issues.push({ code: "DAY_INVALID", severity: "hard", message: `Invalid date or time on ${d.day}.` })
+    if (
+      !isLocalDate(d.day) ||
+      !isLocalTime(d.startTime) ||
+      !isLocalTime(d.endTime)
+    ) {
+      issues.push({
+        code: "DAY_INVALID",
+        severity: "hard",
+        message: `Invalid date or time on ${d.day}.`,
+      })
       continue
     }
     if (minutesOf(d.endTime) <= minutesOf(d.startTime)) {
-      issues.push({ code: "DAY_INVALID", severity: "hard", message: `${d.day}: end must be after start.` })
+      issues.push({
+        code: "DAY_INVALID",
+        severity: "hard",
+        message: `${d.day}: end must be after start.`,
+      })
       continue
     }
-    intervals.push({ ...d, start: localToUtc(d.day, d.startTime, tz), end: localToUtc(d.day, d.endTime, tz) })
+    intervals.push({
+      ...d,
+      start: localToUtc(d.day, d.startTime, tz),
+      end: localToUtc(d.day, d.endTime, tz),
+    })
   }
   intervals.sort((a, b) => a.day.localeCompare(b.day))
   return { intervals, issues }
@@ -133,10 +157,16 @@ export function toIntervals(days: readonly DayInput[], tz: string): { intervals:
 
 export function validateSubmission(ctx: SubmissionContext): Issue[] {
   const issues: Issue[] = []
-  const hard = (code: IssueCode, message: string) => issues.push({ code, severity: "hard", message })
-  const soft = (code: IssueCode, message: string) => issues.push({ code, severity: "soft", message })
+  const hard = (code: IssueCode, message: string) =>
+    issues.push({ code, severity: "hard", message })
+  const soft = (code: IssueCode, message: string) =>
+    issues.push({ code, severity: "soft", message })
 
-  if (ctx.requesterHasActiveHold) hard("HOLD_ACTIVE", "You have an active hold on your account. Contact the equipment office.")
+  if (ctx.requesterHasActiveHold)
+    hard(
+      "HOLD_ACTIVE",
+      "You have an active hold on your account. Contact the equipment office."
+    )
 
   // Days
   if (ctx.days.length === 0) {
@@ -155,82 +185,141 @@ export function validateSubmission(ctx: SubmissionContext): Issue[] {
   }
 
   const first = intervals[0]!
-  if (Date.parse(first.start) <= Date.parse(ctx.now)) hard("IN_PAST", "The event cannot start in the past.")
+  if (Date.parse(first.start) <= Date.parse(ctx.now))
+    hard("IN_PAST", "The event cannot start in the past.")
 
   // Event type limits
   const t = ctx.eventType
-  if (!t.active) hard("TYPE_INACTIVE", "This event type is no longer available.")
-  if (!t.allowedStudioIds.includes(ctx.studio.id)) hard("TYPE_STUDIO_NOT_ALLOWED", "This event type cannot use the selected studio.")
-  if (intervals.length > t.maxDays) hard("TYPE_MAX_DAYS", `This event type allows at most ${t.maxDays} day(s).`)
+  if (!t.active)
+    hard("TYPE_INACTIVE", "This event type is no longer available.")
+  if (!t.allowedStudioIds.includes(ctx.studio.id))
+    hard(
+      "TYPE_STUDIO_NOT_ALLOWED",
+      "This event type cannot use the selected studio."
+    )
+  if (intervals.length > t.maxDays)
+    hard("TYPE_MAX_DAYS", `This event type allows at most ${t.maxDays} day(s).`)
   for (const d of intervals) {
     if (hoursBetween(d.start, d.end) > t.maxHoursPerDay)
-      hard("TYPE_MAX_HOURS", `${d.day}: at most ${t.maxHoursPerDay} hours per day for this event type.`)
+      hard(
+        "TYPE_MAX_HOURS",
+        `${d.day}: at most ${t.maxHoursPerDay} hours per day for this event type.`
+      )
   }
 
   // Policies (soft, BR-006-06)
   const hoursUntilStart = hoursBetween(ctx.now, first.start)
   const p = ctx.policy
   if (hoursUntilStart < p.decisionCutoffHours)
-    hard("DECISION_CUTOFF", `Requests must be made at least ${p.decisionCutoffHours} hours before the event so they can be approved.`)
+    hard(
+      "DECISION_CUTOFF",
+      `Requests must be made at least ${p.decisionCutoffHours} hours before the event so they can be approved.`
+    )
   else if (hoursUntilStart < p.leadTimeHours)
-    soft("LEAD_TIME", `Requests should be made at least ${p.leadTimeHours} hours ahead.`)
-  if (hoursUntilStart > p.advanceDays * 24) soft("ADVANCE", `Events can be booked at most ${p.advanceDays} days ahead.`)
+    soft(
+      "LEAD_TIME",
+      `Requests should be made at least ${p.leadTimeHours} hours ahead.`
+    )
+  if (hoursUntilStart > p.advanceDays * 24)
+    soft("ADVANCE", `Events can be booked at most ${p.advanceDays} days ahead.`)
   const weekly: Record<string, number> = { ...ctx.requesterWeeklyHours }
   for (const d of intervals) {
     const k = isoWeekKey(d.day)
     weekly[k] = (weekly[k] ?? 0) + hoursBetween(d.start, d.end)
   }
   for (const [week, hours] of Object.entries(weekly)) {
-    if (hours > p.weeklyHours && intervals.some((d) => isoWeekKey(d.day) === week))
-      soft("WEEKLY_HOURS", `Week ${week}: ${hours.toFixed(1)} h booked, limit is ${p.weeklyHours} h.`)
+    if (
+      hours > p.weeklyHours &&
+      intervals.some((d) => isoWeekKey(d.day) === week)
+    )
+      soft(
+        "WEEKLY_HOURS",
+        `Week ${week}: ${hours.toFixed(1)} h booked, limit is ${p.weeklyHours} h.`
+      )
   }
-  if (ctx.requesterOpenEvents + 1 > p.openCap) soft("OPEN_CAP", `You may have at most ${p.openCap} open requests.`)
+  if (ctx.requesterOpenEvents + 1 > p.openCap)
+    soft("OPEN_CAP", `You may have at most ${p.openCap} open requests.`)
 
   // Studio
   const s = ctx.studio
-  if (!s.active) hard("STUDIO_INACTIVE", "This studio is not accepting bookings.")
+  if (!s.active)
+    hard("STUDIO_INACTIVE", "This studio is not accepting bookings.")
   for (const d of intervals) {
     const startM = minutesOf(d.startTime)
     const endM = minutesOf(d.endTime)
     if (startM % s.slotGranularityMinutes || endM % s.slotGranularityMinutes)
-      hard("SLOT_GRANULARITY", `${d.day}: times must be on ${s.slotGranularityMinutes}-minute boundaries.`)
+      hard(
+        "SLOT_GRANULARITY",
+        `${d.day}: times must be on ${s.slotGranularityMinutes}-minute boundaries.`
+      )
     const wd = weekdayOf(d.day)
     const fits = s.openingHours.some(
-      (h) => h.weekday === wd && minutesOf(h.opens) <= startM && endM <= minutesOf(h.closes),
+      (h) =>
+        h.weekday === wd &&
+        minutesOf(h.opens) <= startM &&
+        endM <= minutesOf(h.closes)
     )
-    if (!fits) hard("OUTSIDE_HOURS", `${d.day}: outside the studio's opening hours.`)
-    if (s.blackouts.some((b) => overlaps(b, d))) hard("BLACKOUT", `${d.day}: the studio is closed.`)
+    if (!fits)
+      hard("OUTSIDE_HOURS", `${d.day}: outside the studio's opening hours.`)
+    if (s.blackouts.some((b) => overlaps(b, d)))
+      hard("BLACKOUT", `${d.day}: the studio is closed.`)
     if (ctx.studioBusy.some((b) => overlaps(b, d, s.turnaroundMinutes)))
-      hard("STUDIO_CONFLICT", `${d.day}: the studio is already booked (including ${s.turnaroundMinutes} min turnaround).`)
+      hard(
+        "STUDIO_CONFLICT",
+        `${d.day}: the studio is already booked (including ${s.turnaroundMinutes} min turnaround).`
+      )
   }
 
   // Levels (F-002)
   const dayList = intervals.map((d) => d.day)
   const studioGap = firstUncoveredDay(ctx.grants, dayList, s.minLevelRank)
-  if (studioGap) hard("LEVEL_STUDIO", `${s.minLevelName} is required for this studio; you are not covered on ${studioGap}.`)
+  if (studioGap)
+    hard(
+      "LEVEL_STUDIO",
+      `${s.minLevelName} is required for this studio; you are not covered on ${studioGap}.`
+    )
 
   // Equipment
   for (const l of ctx.lines) {
     if (l.qty <= 0) continue
-    if (!l.typeActive) hard("EQUIPMENT_INACTIVE", `${l.typeName} is no longer bookable.`)
+    if (!l.typeActive)
+      hard("EQUIPMENT_INACTIVE", `${l.typeName} is no longer bookable.`)
     const gap = firstUncoveredDay(ctx.grants, dayList, l.classMinLevelRank)
-    if (gap) hard("LEVEL_EQUIPMENT", `${l.typeName} requires ${l.classMinLevelName}; you are not covered on ${gap}.`)
+    if (gap)
+      hard(
+        "LEVEL_EQUIPMENT",
+        `${l.typeName} requires ${l.classMinLevelName}; you are not covered on ${gap}.`
+      )
     if (l.qty > l.availableQty)
-      hard("EQUIPMENT_SHORTAGE", `${l.typeName}: ${l.qty} requested, ${Math.max(0, l.availableQty)} available.`)
+      hard(
+        "EQUIPMENT_SHORTAGE",
+        `${l.typeName}: ${l.qty} requested, ${Math.max(0, l.availableQty)} available.`
+      )
     if (l.maxPerEvent !== null && l.qty > l.maxPerEvent)
-      soft("MAX_PER_EVENT", `${l.typeName}: at most ${l.maxPerEvent} per event.`)
+      soft(
+        "MAX_PER_EVENT",
+        `${l.typeName}: at most ${l.maxPerEvent} per event.`
+      )
   }
 
   // Sponsor
   if (!ctx.sponsor) hard("SPONSOR_REQUIRED", "Choose a sponsor.")
-  else if (ctx.sponsor.id === ctx.requesterId) hard("SPONSOR_SELF", "You cannot sponsor your own event.")
-  else if (!ctx.sponsor.active || !ctx.sponsor.isSponsor) hard("SPONSOR_INVALID", "The chosen sponsor cannot approve events.")
+  else if (ctx.sponsor.id === ctx.requesterId)
+    hard("SPONSOR_SELF", "You cannot sponsor your own event.")
+  else if (!ctx.sponsor.active || !ctx.sponsor.isSponsor)
+    hard("SPONSOR_INVALID", "The chosen sponsor cannot approve events.")
 
   return issues
 }
 
 export function softCodes(issues: readonly Issue[]): SoftPolicyCode[] {
-  return [...new Set(issues.filter((i) => i.severity === "soft").map((i) => i.code as SoftPolicyCode))]
+  return [
+    ...new Set(
+      issues
+        .filter((i) => i.severity === "soft")
+        .map((i) => i.code as SoftPolicyCode)
+    ),
+  ]
 }
 
 export function hasHard(issues: readonly Issue[]): boolean {

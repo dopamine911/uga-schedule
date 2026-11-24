@@ -12,7 +12,7 @@ export function audit(
     before?: unknown
     after?: unknown
     reason?: string
-  },
+  }
 ): void {
   db.insert(auditLog)
     .values({

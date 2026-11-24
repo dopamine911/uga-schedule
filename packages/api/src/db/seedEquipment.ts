@@ -20,8 +20,18 @@ interface CatalogType {
   model: string
   description: string
   maxPerEvent?: number
-  serialized?: { prefix: string; count: number; serialPrefix: string; exceptions?: UnitException[] }
-  bulk?: { available: number; damaged?: number; inRepair?: number; lost?: number }
+  serialized?: {
+    prefix: string
+    count: number
+    serialPrefix: string
+    exceptions?: UnitException[]
+  }
+  bulk?: {
+    available: number
+    damaged?: number
+    inRepair?: number
+    lost?: number
+  }
 }
 
 interface CatalogClass {
@@ -35,7 +45,8 @@ export const EQUIPMENT_CATALOG: CatalogClass[] = [
   {
     name: "Audio Basics",
     minLevelRank: 1,
-    description: "Studio microphones, headphones, cabling and podcast recorders.",
+    description:
+      "Studio microphones, headphones, cabling and podcast recorders.",
     types: [
       {
         name: "Shure SM7B Microphone",
@@ -59,7 +70,18 @@ export const EQUIPMENT_CATALOG: CatalogClass[] = [
         model: "SM58",
         description: "Handheld dynamic vocal microphone.",
         maxPerEvent: 6,
-        serialized: { prefix: "SM58", count: 6, serialPrefix: "SM58-21", exceptions: [{ n: 6, status: "damaged", notes: "Grille dented, intermittent cable jack" }] },
+        serialized: {
+          prefix: "SM58",
+          count: 6,
+          serialPrefix: "SM58-21",
+          exceptions: [
+            {
+              n: 6,
+              status: "damaged",
+              notes: "Grille dented, intermittent cable jack",
+            },
+          ],
+        },
       },
       {
         name: "Rode PodMic",
@@ -75,7 +97,18 @@ export const EQUIPMENT_CATALOG: CatalogClass[] = [
         model: "ATH-M50x",
         description: "Closed-back monitoring headphones.",
         maxPerEvent: 6,
-        serialized: { prefix: "HP", count: 8, serialPrefix: "M50X-44", exceptions: [{ n: 8, status: "lost", notes: "Not returned after FILM 101 lab, Oct" }] },
+        serialized: {
+          prefix: "HP",
+          count: 8,
+          serialPrefix: "M50X-44",
+          exceptions: [
+            {
+              n: 8,
+              status: "lost",
+              notes: "Not returned after FILM 101 lab, Oct",
+            },
+          ],
+        },
       },
       {
         name: "Zoom PodTrak P4",
@@ -114,7 +147,19 @@ export const EQUIPMENT_CATALOG: CatalogClass[] = [
         model: "504X + 645 Fast",
         description: "Fluid-head video tripod, 12 kg payload.",
         maxPerEvent: 2,
-        serialized: { prefix: "TRI", count: 6, serialPrefix: "MF504-7", exceptions: [{ n: 5, status: "in_repair", notes: "Leg lock replacement", backInDays: 4 }] },
+        serialized: {
+          prefix: "TRI",
+          count: 6,
+          serialPrefix: "MF504-7",
+          exceptions: [
+            {
+              n: 5,
+              status: "in_repair",
+              notes: "Leg lock replacement",
+              backInDays: 4,
+            },
+          ],
+        },
       },
       {
         name: "Sandbag 15lb",
@@ -198,7 +243,19 @@ export const EQUIPMENT_CATALOG: CatalogClass[] = [
         model: "EW-DP ME2",
         description: "Digital wireless lavalier kit (transmitter + receiver).",
         maxPerEvent: 3,
-        serialized: { prefix: "LAV", count: 4, serialPrefix: "EWDP-40", exceptions: [{ n: 4, status: "in_repair", notes: "Receiver antenna connector", backInDays: 9 }] },
+        serialized: {
+          prefix: "LAV",
+          count: 4,
+          serialPrefix: "EWDP-40",
+          exceptions: [
+            {
+              n: 4,
+              status: "in_repair",
+              notes: "Receiver antenna connector",
+              backInDays: 9,
+            },
+          ],
+        },
       },
       {
         name: "Boom Pole 12ft",
@@ -233,7 +290,7 @@ export const EQUIPMENT_CATALOG: CatalogClass[] = [
         name: "C-Stand",
         manufacturer: "Matthews",
         model: "40in",
-        description: "40\" century stand with grip head and arm.",
+        description: '40" century stand with grip head and arm.',
         bulk: { available: 10 },
       },
       {
@@ -304,7 +361,18 @@ export const EQUIPMENT_CATALOG: CatalogClass[] = [
         model: "BMPCC 6K Pro",
         description: "Super 35 BRAW camera, EF mount.",
         maxPerEvent: 1,
-        serialized: { prefix: "BM6K", count: 3, serialPrefix: "BMPCC-66", exceptions: [{ n: 3, status: "retired", notes: "Mainboard failure, written off" }] },
+        serialized: {
+          prefix: "BM6K",
+          count: 3,
+          serialPrefix: "BMPCC-66",
+          exceptions: [
+            {
+              n: 3,
+              status: "retired",
+              notes: "Mainboard failure, written off",
+            },
+          ],
+        },
       },
       {
         name: "DJI RS 3 Pro Gimbal",
@@ -356,7 +424,7 @@ export const EQUIPMENT_CATALOG: CatalogClass[] = [
         name: "Atomos Ninja V Monitor",
         manufacturer: "Atomos",
         model: "Ninja V",
-        description: "5\" HDR monitor-recorder.",
+        description: '5" HDR monitor-recorder.',
         maxPerEvent: 2,
         serialized: { prefix: "NINJA", count: 3, serialPrefix: "ATNV-28" },
       },
@@ -373,19 +441,28 @@ export const EQUIPMENT_CATALOG: CatalogClass[] = [
   {
     name: "Cinema Cameras",
     minLevelRank: 3,
-    description: "Cinema cameras and large stabilizers. Sound stage training required.",
+    description:
+      "Cinema cameras and large stabilizers. Sound stage training required.",
     types: [
       {
         name: "Sony FX6 Kit",
         manufacturer: "Sony",
         model: "ILME-FX6",
-        description: "Full-frame cinema camera, top handle, LCD, 2 BP-U batteries.",
+        description:
+          "Full-frame cinema camera, top handle, LCD, 2 BP-U batteries.",
         maxPerEvent: 1,
         serialized: {
           prefix: "CAM",
           count: 3,
           serialPrefix: "FX6-500",
-          exceptions: [{ n: 3, status: "in_repair", notes: "Sensor cleaning", backInDays: 10 }],
+          exceptions: [
+            {
+              n: 3,
+              status: "in_repair",
+              notes: "Sensor cleaning",
+              backInDays: 10,
+            },
+          ],
         },
       },
       {
@@ -446,13 +523,17 @@ export const EQUIPMENT_CATALOG: CatalogClass[] = [
 export function seedEquipment(
   db: DB,
   levelIdByRank: Record<1 | 2 | 3, string>,
-  dayOffset: (n: number) => string,
+  dayOffset: (n: number) => string
 ): Map<string, typeof s.equipmentTypes.$inferSelect> {
   const byName = new Map<string, typeof s.equipmentTypes.$inferSelect>()
   for (const cls of EQUIPMENT_CATALOG) {
     const c = db
       .insert(s.equipmentClasses)
-      .values({ name: cls.name, minLevelId: levelIdByRank[cls.minLevelRank], description: cls.description })
+      .values({
+        name: cls.name,
+        minLevelId: levelIdByRank[cls.minLevelRank],
+        description: cls.description,
+      })
       .returning()
       .get()
     for (const t of cls.types) {
@@ -482,10 +563,13 @@ export function seedEquipment(
                 assetTag: `${prefix}-${String(n).padStart(3, "0")}`,
                 serialNumber: `${serialPrefix}${n}`,
                 status: ex?.status ?? "available",
-                expectedBack: ex?.backInDays === undefined ? null : dayOffset(ex.backInDays),
+                expectedBack:
+                  ex?.backInDays === undefined
+                    ? null
+                    : dayOffset(ex.backInDays),
                 notes: ex?.notes ?? "",
               }
-            }),
+            })
           )
           .run()
       } else if (t.bulk) {

@@ -340,7 +340,10 @@ function RosterDialog({
     .filter(Boolean)
   // Mirrors the server: emails match case-insensitively, and enrolled students not on the list are dropped.
   const listed = new Set(emails.map((e) => e.toLowerCase()))
-  const dropping = emails.length === 0 ? [] : enrolled.filter((e) => !listed.has(e.user.email.toLowerCase()))
+  const dropping =
+    emails.length === 0
+      ? []
+      : enrolled.filter((e) => !listed.has(e.user.email.toLowerCase()))
 
   const save = useMutation({
     mutationFn: () =>
@@ -400,7 +403,9 @@ function RosterDialog({
         title="Import roster"
         description="The roster replaces current enrollments: listed students are enrolled, enrolled students not listed are dropped."
         onClose={onClose}
-        onSubmit={() => (dropping.length > 0 ? setConfirmOpen(true) : save.mutate())}
+        onSubmit={() =>
+          dropping.length > 0 ? setConfirmOpen(true) : save.mutate()
+        }
         pending={save.isPending}
         error={save.error}
         submitLabel="Import roster"
@@ -428,7 +433,8 @@ function RosterDialog({
                   <p>
                     {dropping.length} enrolled student
                     {dropping.length === 1 ? " is" : "s are"} not on this list
-                    and will be dropped. Their course grant is revoked from today:
+                    and will be dropped. Their course grant is revoked from
+                    today:
                   </p>
                   <ul className="flex list-disc flex-col gap-1 pl-4">
                     {dropping.map((e) => (
@@ -450,7 +456,9 @@ function RosterDialog({
               Drop {dropping.length} student{dropping.length === 1 ? "" : "s"}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Importing this roster drops {dropping.map((e) => e.user.displayName).join(", ")}. Open events that rely on their grants are flagged for review.
+              Importing this roster drops{" "}
+              {dropping.map((e) => e.user.displayName).join(", ")}. Open events
+              that rely on their grants are flagged for review.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

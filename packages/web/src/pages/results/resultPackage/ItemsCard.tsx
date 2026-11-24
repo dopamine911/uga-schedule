@@ -128,7 +128,9 @@ function ItemRow({
           {item.kind === "link" ? "Link" : humanize(item.mimeType ?? "file")}
         </Badge>
       </TableCell>
-      <TableCell>{item.kind === "file" ? fmtSize(item.sizeBytes) : "—"}</TableCell>
+      <TableCell>
+        {item.kind === "file" ? fmtSize(item.sizeBytes) : "—"}
+      </TableCell>
       <TableCell>{fmtInstant(item.uploadedAt, tz)}</TableCell>
       <TableCell>
         {expired ? (

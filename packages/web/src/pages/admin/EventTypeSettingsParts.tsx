@@ -14,11 +14,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Input } from "@/components/ui/input"
-import {
-  type SetSettings,
-  type SettingsForm,
-  whole,
-} from "./eventTypeSettings"
+import { type SetSettings, type SettingsForm, whole } from "./eventTypeSettings"
 
 type SectionProps = {
   v: SettingsForm
@@ -166,9 +162,8 @@ export function DeactivateRunningDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Deactivate with open events?</AlertDialogTitle>
           <AlertDialogDescription>
-            {message}{" "}
-            They keep running under the current version; no new bookings will
-            be accepted.
+            {message} They keep running under the current version; no new
+            bookings will be accepted.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

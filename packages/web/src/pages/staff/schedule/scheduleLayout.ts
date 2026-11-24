@@ -1,8 +1,4 @@
-import {
-  type LocalDate,
-  nextDay,
-  utcToLocal,
-} from "@studio/domain"
+import { type LocalDate, nextDay, utcToLocal } from "@studio/domain"
 import type { InferResponseType } from "hono/client"
 import type { api } from "@/lib/api"
 import { fmtDay } from "@/lib/format"
@@ -136,7 +132,5 @@ export function rangeLabel(
   weekStart: LocalDate,
   weekEnd: LocalDate
 ): string {
-  return isMobile
-    ? fmtDay(anchor)
-    : `${fmtDay(weekStart)} – ${fmtDay(weekEnd)}`
+  return isMobile ? fmtDay(anchor) : `${fmtDay(weekStart)} – ${fmtDay(weekEnd)}`
 }

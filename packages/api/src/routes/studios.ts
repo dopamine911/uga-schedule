@@ -10,7 +10,18 @@ import {
   nextDay,
   weekdayOf,
 } from "@studio/domain"
-import { and, asc, eq, gte, inArray, isNull, lte, or, lt, gt } from "drizzle-orm"
+import {
+  and,
+  asc,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  lte,
+  or,
+  lt,
+  gt,
+} from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
 import { config } from "../config.ts"
@@ -42,8 +53,14 @@ const MAX_SCHEDULE_DAYS = 31
 type StudioRow = typeof studios.$inferSelect
 type LevelRow = typeof levels.$inferSelect
 
-function hoursOf(db: DB, studioIds: readonly string[]): Map<string, { weekday: number; opens: string; closes: string }[]> {
-  const out = new Map<string, { weekday: number; opens: string; closes: string }[]>()
+function hoursOf(
+  db: DB,
+  studioIds: readonly string[]
+): Map<string, { weekday: number; opens: string; closes: string }[]> {
+  const out = new Map<
+    string,
+    { weekday: number; opens: string; closes: string }[]
+  >()
   if (studioIds.length === 0) return out
   for (const h of db
     .select()
@@ -58,19 +75,26 @@ function hoursOf(db: DB, studioIds: readonly string[]): Map<string, { weekday: n
   return out
 }
 
-function staffOf(db: DB, studioIds: readonly string[]): Map<string, { id: string; displayName: string }[]> {
+function staffOf(
+  db: DB,
+  studioIds: readonly string[]
+): Map<string, { id: string; displayName: string }[]> {
   const out = new Map<string, { id: string; displayName: string }[]>()
   if (studioIds.length === 0) return out
   for (const r of db
-    .select({ studioId: roleAssignments.studioId, id: users.id, displayName: users.displayName })
+    .select({
+      studioId: roleAssignments.studioId,
+      id: users.id,
+      displayName: users.displayName,
+    })
     .from(roleAssignments)
     .innerJoin(users, eq(users.id, roleAssignments.userId))
     .where(
       and(
         eq(roleAssignments.role, "STUDIO_STAFF"),
         eq(users.status, "active"),
-        inArray(roleAssignments.studioId, [...studioIds]),
-      ),
+        inArray(roleAssignments.studioId, [...studioIds])
+      )
     )
     .orderBy(asc(users.displayName))
     .all()) {
@@ -83,7 +107,13 @@ function staffOf(db: DB, studioIds: readonly string[]): Map<string, { id: string
 }
 
 function blackoutView(b: typeof blackouts.$inferSelect) {
-  return { id: b.id, studioId: b.studioId, start: b.startsAt, end: b.endsAt, reason: b.reason }
+  return {
+    id: b.id,
+    studioId: b.studioId,
+    start: b.startsAt,
+    end: b.endsAt,
+    reason: b.reason,
+  }
 }
 
 /** Studios with the caller's eligibility; students and sponsors see active studios only (F-004 §4). */
@@ -96,8 +126,8 @@ function loadStudios(db: DB, userId: string, staff: boolean, id?: string) {
     .where(
       and(
         id ? eq(studios.id, id) : undefined,
-        staff ? undefined : eq(studios.status, "active"),
-      ),
+        staff ? undefined : eq(studios.status, "active")
+      )
     )
     .orderBy(asc(studios.name))
     .all()
@@ -163,7 +193,10 @@ const hoursBody = z.array(
       opens: localTime,
       closes: localTime,
     })
-    .refine((h) => minutesOf(h.closes) > minutesOf(h.opens), "Closing time must be after opening time."),
+    .refine(
+      (h) => minutesOf(h.closes) > minutesOf(h.opens),
+      "Closing time must be after opening time."
+    )
 )
 const blackoutBody = z
   .object({
@@ -174,9 +207,14 @@ const blackoutBody = z
     endTime: localTime,
     reason: z.string().trim().min(1, "A reason is required."),
   })
-  .refine((b) => localToUtc(b.endDay, b.endTime, config.tz) > localToUtc(b.startDay, b.startTime, config.tz), {
-    message: "The blackout must end after it starts.",
-  })
+  .refine(
+    (b) =>
+      localToUtc(b.endDay, b.endTime, config.tz) >
+      localToUtc(b.startDay, b.startTime, config.tz),
+    {
+      message: "The blackout must end after it starts.",
+    }
+  )
 const scheduleQuery = z.object({ from: isoDate, to: isoDate })
 
 export const routes = new Hono<AppEnv>()
@@ -218,7 +256,13 @@ export const routes = new Hono<AppEnv>()
         })
         .returning()
         .get()
-      audit(db, { actorId: me.id, action: "studio.create", entityType: "studio", entityId: s.id, after: s })
+      audit(db, {
+        actorId: me.id,
+        action: "studio.create",
+        entityType: "studio",
+        entityId: s.id,
+        after: s,
+      })
       return s
     })
     return c.json(row, 201)
@@ -239,17 +283,29 @@ export const routes = new Hono<AppEnv>()
           capacityPeople: body.capacityPeople ?? before.capacityPeople,
           minLevelId: body.minLevelId ?? before.minLevelId,
           turnaroundMinutes: body.turnaroundMinutes ?? before.turnaroundMinutes,
-          slotGranularityMinutes: body.slotGranularityMinutes ?? before.slotGranularityMinutes,
+          slotGranularityMinutes:
+            body.slotGranularityMinutes ?? before.slotGranularityMinutes,
           status: body.status ?? before.status,
         })
         .where(eq(studios.id, id))
         .returning()
         .get()
-      audit(db, { actorId: me.id, action: "studio.update", entityType: "studio", entityId: id, before, after })
+      audit(db, {
+        actorId: me.id,
+        action: "studio.update",
+        entityType: "studio",
+        entityId: id,
+        before,
+        after,
+      })
       // BR-004-07/08: a higher min level or a deactivated studio re-checks open events.
-      const reviewable = body.minLevelId !== undefined && body.minLevelId !== before.minLevelId
-      const deactivated = body.status !== undefined && body.status !== before.status
-      return reviewable || deactivated ? recheckEvents(db, { studioId: id }) : []
+      const reviewable =
+        body.minLevelId !== undefined && body.minLevelId !== before.minLevelId
+      const deactivated =
+        body.status !== undefined && body.status !== before.status
+      return reviewable || deactivated
+        ? recheckEvents(db, { studioId: id })
+        : []
     })
     const [updated] = loadStudios(db, me.id, true, id)
     return c.json({ ...updated, flaggedEvents })
@@ -264,7 +320,14 @@ export const routes = new Hono<AppEnv>()
       db.delete(openingHours).where(eq(openingHours.studioId, id)).run()
       if (rows.length)
         db.insert(openingHours)
-          .values(rows.map((r) => ({ studioId: id, weekday: r.weekday, opens: r.opens, closes: r.closes })))
+          .values(
+            rows.map((r) => ({
+              studioId: id,
+              weekday: r.weekday,
+              opens: r.opens,
+              closes: r.closes,
+            }))
+          )
           .run()
       audit(db, {
         actorId: me.id,
@@ -289,7 +352,12 @@ export const routes = new Hono<AppEnv>()
     const result = db.transaction(() => {
       const b = db
         .insert(blackouts)
-        .values({ studioId: body.studioId, startsAt, endsAt, reason: body.reason })
+        .values({
+          studioId: body.studioId,
+          startsAt,
+          endsAt,
+          reason: body.reason,
+        })
         .returning()
         .get()
       audit(db, {
@@ -303,7 +371,10 @@ export const routes = new Hono<AppEnv>()
       // US-004-02: events over the blackout are flagged, not cancelled.
       return { blackout: b, flaggedEvents: recheckStudio(db, body.studioId) }
     })
-    return c.json({ ...blackoutView(result.blackout), flaggedEvents: result.flaggedEvents }, 201)
+    return c.json(
+      { ...blackoutView(result.blackout), flaggedEvents: result.flaggedEvents },
+      201
+    )
   })
   .delete("/blackouts/:id", (c) => {
     const me = authorize(c, "studio.manage")
@@ -331,20 +402,36 @@ export const routes = new Hono<AppEnv>()
     const studio = studioOf(db, id)
     if (studio.status !== "active" && !isStaff(me)) throw notFound("Studio")
     const { from, to } = c.req.valid("query")
-    if (to < from) throw badRequest("INVALID_RANGE", "The end day must be on or after the start day.")
-    const span = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000 + 1
+    if (to < from)
+      throw badRequest(
+        "INVALID_RANGE",
+        "The end day must be on or after the start day."
+      )
+    const span =
+      (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
+        86_400_000 +
+      1
     if (span > MAX_SCHEDULE_DAYS)
-      throw badRequest("RANGE_TOO_LONG", `Ask for at most ${MAX_SCHEDULE_DAYS} days at a time.`)
+      throw badRequest(
+        "RANGE_TOO_LONG",
+        `Ask for at most ${MAX_SCHEDULE_DAYS} days at a time.`
+      )
 
     // Opening hours for each calendar day in the range.
     const hours = hoursOf(db, [id]).get(id) ?? []
-    const days: { day: string; weekday: number; open: { opens: string; closes: string }[] }[] = []
+    const days: {
+      day: string
+      weekday: number
+      open: { opens: string; closes: string }[]
+    }[] = []
     for (let day = from; day <= to; day = nextDay(day)) {
       const weekday = weekdayOf(day)
       days.push({
         day,
         weekday,
-        open: hours.filter((h) => h.weekday === weekday).map((h) => ({ opens: h.opens, closes: h.closes })),
+        open: hours
+          .filter((h) => h.weekday === weekday)
+          .map((h) => ({ opens: h.opens, closes: h.closes })),
       })
     }
 
@@ -357,8 +444,8 @@ export const routes = new Hono<AppEnv>()
         and(
           or(eq(blackouts.studioId, id), isNull(blackouts.studioId)),
           lt(blackouts.startsAt, rangeEnd),
-          gt(blackouts.endsAt, rangeStart),
-        ),
+          gt(blackouts.endsAt, rangeStart)
+        )
       )
       .orderBy(asc(blackouts.startsAt))
       .all()
@@ -383,8 +470,8 @@ export const routes = new Hono<AppEnv>()
           eq(events.studioId, id),
           inArray(events.state, [...HOLDS_STUDIO]),
           gte(eventDays.day, from),
-          lte(eventDays.day, to),
-        ),
+          lte(eventDays.day, to)
+        )
       )
       .orderBy(asc(eventDays.startsAt))
       .all()
@@ -392,7 +479,10 @@ export const routes = new Hono<AppEnv>()
     const eventIds = [...new Set(busyRows.map((b) => b.eventId))]
     if (eventIds.length)
       for (const p of db
-        .select({ eventId: eventParticipants.eventId, userId: eventParticipants.userId })
+        .select({
+          eventId: eventParticipants.eventId,
+          userId: eventParticipants.userId,
+        })
         .from(eventParticipants)
         .where(inArray(eventParticipants.eventId, eventIds))
         .all()) {
@@ -404,22 +494,36 @@ export const routes = new Hono<AppEnv>()
     const turnaroundMs = studio.turnaroundMinutes * 60_000
     const busy = busyRows.map((b) => {
       const own =
-        b.requesterId === me.id || b.sponsorId === me.id || (participants.get(b.eventId)?.has(me.id) ?? false)
+        b.requesterId === me.id ||
+        b.sponsorId === me.id ||
+        (participants.get(b.eventId)?.has(me.id) ?? false)
       // F-001 matrix: staff of this studio, Equipment Managers and Admins see titles; others only their own.
       const canSeeDetails = can(me, "event.view", { own, studioId: id })
       const base = {
         start: b.dayStart,
         end: b.dayEnd,
-        turnaroundEnd: new Date(Date.parse(b.dayEnd) + turnaroundMs).toISOString(),
+        turnaroundEnd: new Date(
+          Date.parse(b.dayEnd) + turnaroundMs
+        ).toISOString(),
       }
       return canSeeDetails
-        ? { ...base, eventId: b.eventId, title: b.title, requesterName: b.requesterName, state: b.state }
+        ? {
+            ...base,
+            eventId: b.eventId,
+            title: b.title,
+            requesterName: b.requesterName,
+            state: b.state,
+          }
         : base
     })
 
     return c.json({
       days,
-      blackouts: blackoutRows.map((b) => ({ start: b.startsAt, end: b.endsAt, reason: b.reason })),
+      blackouts: blackoutRows.map((b) => ({
+        start: b.startsAt,
+        end: b.endsAt,
+        reason: b.reason,
+      })),
       busy,
     })
   })

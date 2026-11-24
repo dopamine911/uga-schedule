@@ -57,7 +57,9 @@ export function PageHeader({
 }) {
   const { pathname } = useLocation()
   // createElement: the icon is an existing component chosen per route, not one created during render.
-  const iconNode = createElement(icon ?? routeIcon(pathname), { "aria-hidden": true })
+  const iconNode = createElement(icon ?? routeIcon(pathname), {
+    "aria-hidden": true,
+  })
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div className="flex min-w-0 items-center gap-4">

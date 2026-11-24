@@ -6,11 +6,7 @@ import { EquipmentClassIcon } from "@/components/EquipmentClassIcon"
 import { toast } from "sonner"
 import { EmptyState, PageHeader, QueryView } from "@/components/common"
 import { EquipmentTypeDialog } from "@/components/admin/EquipmentTypeDialog"
-import {
-  FormDialog,
-  RequirePerm,
-  StatusBadge,
-} from "@/components/admin/shared"
+import { FormDialog, RequirePerm, StatusBadge } from "@/components/admin/shared"
 import { toastSaved } from "@/components/admin/formHelpers"
 import {
   type EquipmentClass,

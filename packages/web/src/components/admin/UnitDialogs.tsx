@@ -94,7 +94,10 @@ export function UnitStatusDialog({
           param: { id: unit.id },
           json: {
             status: v.status as
-              "damaged" | "retired" | "in_repair" | "available",
+              | "damaged"
+              | "retired"
+              | "in_repair"
+              | "available",
             reason: v.reason.trim(),
             expectedBack: v.status === "in_repair" ? v.expectedBack : null,
           },

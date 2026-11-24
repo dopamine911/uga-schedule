@@ -258,9 +258,7 @@ function DurationQuickPick({
       variant="outline"
       size="sm"
       aria-label={`Length, day ${index + 1}`}
-      value={
-        duration && durations.includes(duration) ? String(duration) : ""
-      }
+      value={duration && durations.includes(duration) ? String(duration) : ""}
       onValueChange={(v) => {
         if (v) onSelect(Number(v))
       }}
@@ -370,7 +368,11 @@ function DayTimeline({
             </span>
             <span
               className="absolute inset-y-1 rounded-sm bg-[repeating-linear-gradient(45deg,var(--border)_0_4px,transparent_4px_8px)]"
-              style={barPosition({ start: b.end, end: b.turnaroundEnd }, min, max)}
+              style={barPosition(
+                { start: b.end, end: b.turnaroundEnd },
+                min,
+                max
+              )}
             />
           </span>
         ))}

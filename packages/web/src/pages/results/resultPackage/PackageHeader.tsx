@@ -26,7 +26,9 @@ export function PackageHeaderDescription({
       <Badge variant={statusBadgeVariant(pkg.status)}>
         {humanize(pkg.status)}
       </Badge>
-      {pkg.publishedAt && <span>Published {fmtInstant(pkg.publishedAt, tz)}</span>}
+      {pkg.publishedAt && (
+        <span>Published {fmtInstant(pkg.publishedAt, tz)}</span>
+      )}
       {pkg.retainUntil !== null && pkg.daysLeft !== null && !expired && (
         <span>
           · {pkg.daysLeft} days left to download, until{" "}

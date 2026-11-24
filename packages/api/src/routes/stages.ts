@@ -3,7 +3,11 @@ import { Hono } from "hono"
 import { z } from "zod"
 import { stageInstances } from "../db/schema.ts"
 import type { AppEnv } from "../env.ts"
-import { allowed, canCompleteStage, visibleEvent } from "../services/lifecycle.ts"
+import {
+  allowed,
+  canCompleteStage,
+  visibleEvent,
+} from "../services/lifecycle.ts"
 import { audit } from "../lib/audit.ts"
 import { requireUser } from "../lib/auth.ts"
 import { now } from "../lib/clock.ts"
@@ -18,10 +22,15 @@ export const routes = new Hono<AppEnv>()
   .post("/:id/complete", (c) => {
     const user = requireUser(c)
     const db = c.var.db
-    const stage = db.select().from(stageInstances).where(eq(stageInstances.id, c.req.param("id"))).get()
+    const stage = db
+      .select()
+      .from(stageInstances)
+      .where(eq(stageInstances.id, c.req.param("id")))
+      .get()
     if (!stage) throw notFound("Task")
     const ev = visibleEvent(db, user, stage.eventId)
-    if (stage.kind !== "task") throw conflict("NOT_A_TASK", "Only tasks can be completed.")
+    if (stage.kind !== "task")
+      throw conflict("NOT_A_TASK", "Only tasks can be completed.")
     if (stage.status !== "open" && stage.status !== "overdue")
       throw conflict("INVALID_STATE", `This task is ${stage.status}.`)
     if (!canCompleteStage(user, ev, stage)) throw forbidden()
@@ -42,23 +51,42 @@ export const routes = new Hono<AppEnv>()
       })
       return row
     })
-    return c.json({ id: updated.id, status: updated.status, completedAt: updated.completedAt })
+    return c.json({
+      id: updated.id,
+      status: updated.status,
+      completedAt: updated.completedAt,
+    })
   })
   .post("/:id/override", v("json", reasonBody), (c) => {
     const user = requireUser(c)
     const db = c.var.db
     const body = c.req.valid("json")
-    const stage = db.select().from(stageInstances).where(eq(stageInstances.id, c.req.param("id"))).get()
+    const stage = db
+      .select()
+      .from(stageInstances)
+      .where(eq(stageInstances.id, c.req.param("id")))
+      .get()
     if (!stage) throw notFound("Task")
     const ev = visibleEvent(db, user, stage.eventId)
     if (!allowed(user, "stage.override_block", ev.studioId)) throw forbidden()
     const blocking =
-      stage.kind === "task" && stage.blocksCheckout && (stage.status === "open" || stage.status === "overdue")
-    if (!blocking) throw conflict("NOT_BLOCKING", "Only an open task that blocks checkout can be overridden.")
+      stage.kind === "task" &&
+      stage.blocksCheckout &&
+      (stage.status === "open" || stage.status === "overdue")
+    if (!blocking)
+      throw conflict(
+        "NOT_BLOCKING",
+        "Only an open task that blocks checkout can be overridden."
+      )
     const updated = db.transaction(() => {
       const row = db
         .update(stageInstances)
-        .set({ status: "overridden", overrideReason: body.reason, completedBy: user.id, completedAt: now() })
+        .set({
+          status: "overridden",
+          overrideReason: body.reason,
+          completedBy: user.id,
+          completedAt: now(),
+        })
         .where(eq(stageInstances.id, stage.id))
         .returning()
         .get()
@@ -73,5 +101,9 @@ export const routes = new Hono<AppEnv>()
       })
       return row
     })
-    return c.json({ id: updated.id, status: updated.status, overrideReason: updated.overrideReason })
+    return c.json({
+      id: updated.id,
+      status: updated.status,
+      overrideReason: updated.overrideReason,
+    })
   })

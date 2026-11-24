@@ -1,9 +1,20 @@
-import { STAGE_ANCHORS, STAGE_KINDS, STAGE_RECIPIENTS, TERMINAL } from "@studio/domain"
+import {
+  STAGE_ANCHORS,
+  STAGE_KINDS,
+  STAGE_RECIPIENTS,
+  TERMINAL,
+} from "@studio/domain"
 import { and, asc, eq, inArray, not } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
 import type { DB } from "../db/client.ts"
-import { eventTypeStudios, eventTypes, events, stageTemplates, studios } from "../db/schema.ts"
+import {
+  eventTypeStudios,
+  eventTypes,
+  events,
+  stageTemplates,
+  studios,
+} from "../db/schema.ts"
 import type { AppEnv } from "../env.ts"
 import { audit } from "../lib/audit.ts"
 import { authorize, requireUser } from "../lib/auth.ts"
@@ -32,7 +43,10 @@ export interface StageView {
 }
 
 /** Non-archived stage templates per event type, sorted by seq (BR-005-07). */
-function stagesByType(db: DB, typeIds?: readonly string[]): Map<string, StageView[]> {
+function stagesByType(
+  db: DB,
+  typeIds?: readonly string[]
+): Map<string, StageView[]> {
   const out = new Map<string, StageView[]>()
   const rows = db
     .select()
@@ -40,8 +54,8 @@ function stagesByType(db: DB, typeIds?: readonly string[]): Map<string, StageVie
     .where(
       and(
         eq(stageTemplates.archived, false),
-        typeIds ? inArray(stageTemplates.eventTypeId, [...typeIds]) : undefined,
-      ),
+        typeIds ? inArray(stageTemplates.eventTypeId, [...typeIds]) : undefined
+      )
     )
     .orderBy(asc(stageTemplates.seq))
     .all()
@@ -64,13 +78,22 @@ function stagesByType(db: DB, typeIds?: readonly string[]): Map<string, StageVie
   return out
 }
 
-function studiosByType(db: DB, typeIds?: readonly string[]): Map<string, { id: string; name: string }[]> {
+function studiosByType(
+  db: DB,
+  typeIds?: readonly string[]
+): Map<string, { id: string; name: string }[]> {
   const out = new Map<string, { id: string; name: string }[]>()
   const rows = db
-    .select({ eventTypeId: eventTypeStudios.eventTypeId, id: studios.id, name: studios.name })
+    .select({
+      eventTypeId: eventTypeStudios.eventTypeId,
+      id: studios.id,
+      name: studios.name,
+    })
     .from(eventTypeStudios)
     .innerJoin(studios, eq(studios.id, eventTypeStudios.studioId))
-    .where(typeIds ? inArray(eventTypeStudios.eventTypeId, [...typeIds]) : undefined)
+    .where(
+      typeIds ? inArray(eventTypeStudios.eventTypeId, [...typeIds]) : undefined
+    )
     .orderBy(asc(studios.name))
     .all()
   for (const r of rows) {
@@ -81,7 +104,11 @@ function studiosByType(db: DB, typeIds?: readonly string[]): Map<string, { id: s
   return out
 }
 
-function typeView(t: EventTypeRow, allowed: { id: string; name: string }[], stages: StageView[]) {
+function typeView(
+  t: EventTypeRow,
+  allowed: { id: string; name: string }[],
+  stages: StageView[]
+) {
   return {
     id: t.id,
     name: t.name,
@@ -108,15 +135,17 @@ function loadTypes(db: DB, staff: boolean, id?: string) {
     .where(
       and(
         id ? eq(eventTypes.id, id) : undefined,
-        staff ? undefined : eq(eventTypes.status, "active"),
-      ),
+        staff ? undefined : eq(eventTypes.status, "active")
+      )
     )
     .orderBy(asc(eventTypes.name))
     .all()
   const ids = rows.map((r) => r.id)
   const allowed = studiosByType(db, ids)
   const stages = stagesByType(db, ids)
-  return rows.map((r) => typeView(r, allowed.get(r.id) ?? [], stages.get(r.id) ?? []))
+  return rows.map((r) =>
+    typeView(r, allowed.get(r.id) ?? [], stages.get(r.id) ?? [])
+  )
 }
 
 const typeFields = {
@@ -134,9 +163,14 @@ const typeFields = {
   requiresSponsorSignoff: z.boolean().optional(),
 }
 const typeBase = z.object(typeFields)
-const typeBody = typeBase.extend({ allowedStudioIds: z.array(z.string()).min(1, "Pick at least one studio.") })
+const typeBody = typeBase.extend({
+  allowedStudioIds: z.array(z.string()).min(1, "Pick at least one studio."),
+})
 const typePatch = typeBase.partial().extend({
-  allowedStudioIds: z.array(z.string()).min(1, "Pick at least one studio.").optional(),
+  allowedStudioIds: z
+    .array(z.string())
+    .min(1, "Pick at least one studio.")
+    .optional(),
   /** Admin confirmation to deactivate while events are still running (BR-005-08). */
   confirmRunningEvents: z.boolean().optional(),
 })
@@ -144,7 +178,11 @@ const stageItem = z.object({
   name: z.string().trim().min(1),
   kind: z.enum(STAGE_KINDS),
   anchor: z.enum(STAGE_ANCHORS),
-  offsetMinutes: z.number().int().min(MIN_OFFSET_MINUTES, "Offsets go back at most 90 days.").max(MAX_OFFSET_MINUTES, "Offsets go forward at most 30 days."),
+  offsetMinutes: z
+    .number()
+    .int()
+    .min(MIN_OFFSET_MINUTES, "Offsets go back at most 90 days.")
+    .max(MAX_OFFSET_MINUTES, "Offsets go forward at most 30 days."),
   recipients: z.array(z.enum(STAGE_RECIPIENTS)),
   assigneeRole: z.enum(["requester", "sponsor", "studio_staff"]).nullish(),
   blocksCheckout: z.boolean().optional(),
@@ -155,15 +193,26 @@ const stagesBody = z.array(stageItem)
 function assertStageRules(items: z.infer<typeof stagesBody>): void {
   items.forEach((s, i) => {
     if (s.kind === "task" && !s.assigneeRole)
-      throw badRequest("TASK_ASSIGNEE_REQUIRED", `Stage ${i + 1} is a task and needs an assignee role.`)
+      throw badRequest(
+        "TASK_ASSIGNEE_REQUIRED",
+        `Stage ${i + 1} is a task and needs an assignee role.`
+      )
     if (s.kind === "reminder" && s.blocksCheckout)
-      throw badRequest("REMINDER_BLOCKS", `Stage ${i + 1} is a reminder and cannot block checkout.`)
+      throw badRequest(
+        "REMINDER_BLOCKS",
+        `Stage ${i + 1} is a reminder and cannot block checkout.`
+      )
   })
 }
 
 function assertStudiosExist(db: DB, ids: readonly string[]): void {
-  const found = db.select({ id: studios.id }).from(studios).where(inArray(studios.id, [...ids])).all()
-  if (found.length !== new Set(ids).size) throw badRequest("UNKNOWN_STUDIO", "Unknown studio.")
+  const found = db
+    .select({ id: studios.id })
+    .from(studios)
+    .where(inArray(studios.id, [...ids]))
+    .all()
+  if (found.length !== new Set(ids).size)
+    throw badRequest("UNKNOWN_STUDIO", "Unknown studio.")
 }
 
 function typeOf(db: DB, id: string): EventTypeRow {
@@ -195,9 +244,20 @@ export const routes = new Hono<AppEnv>()
         .returning()
         .get()
       db.insert(eventTypeStudios)
-        .values([...new Set(allowedStudioIds)].map((studioId) => ({ eventTypeId: t.id, studioId })))
+        .values(
+          [...new Set(allowedStudioIds)].map((studioId) => ({
+            eventTypeId: t.id,
+            studioId,
+          }))
+        )
         .run()
-      audit(db, { actorId: me.id, action: "event_type.create", entityType: "event_type", entityId: t.id, after: t })
+      audit(db, {
+        actorId: me.id,
+        action: "event_type.create",
+        entityType: "event_type",
+        entityId: t.id,
+        after: t,
+      })
       return t.id
     })
     const [created] = loadTypes(db, true, id)
@@ -208,19 +268,29 @@ export const routes = new Hono<AppEnv>()
     const db = c.var.db
     const id = c.req.param("id")
     const before = typeOf(db, id)
-    const { allowedStudioIds, confirmRunningEvents, ...fields } = c.req.valid("json")
+    const { allowedStudioIds, confirmRunningEvents, ...fields } =
+      c.req.valid("json")
     if (allowedStudioIds) assertStudiosExist(db, allowedStudioIds)
-    if (fields.status === "inactive" && before.status === "active" && !confirmRunningEvents) {
+    if (
+      fields.status === "inactive" &&
+      before.status === "active" &&
+      !confirmRunningEvents
+    ) {
       const running = db
         .select({ id: events.id })
         .from(events)
-        .where(and(eq(events.eventTypeId, id), not(inArray(events.state, [...TERMINAL]))))
+        .where(
+          and(
+            eq(events.eventTypeId, id),
+            not(inArray(events.state, [...TERMINAL]))
+          )
+        )
         .all().length
       if (running > 0)
         throw conflict(
           "EVENT_TYPE_IN_USE",
           "This event type still has open events. Confirm to let them keep running under the current version.",
-          { openEvents: running },
+          { openEvents: running }
         )
     }
     db.transaction(() => {
@@ -231,9 +301,16 @@ export const routes = new Hono<AppEnv>()
         .returning()
         .get()
       if (allowedStudioIds) {
-        db.delete(eventTypeStudios).where(eq(eventTypeStudios.eventTypeId, id)).run()
+        db.delete(eventTypeStudios)
+          .where(eq(eventTypeStudios.eventTypeId, id))
+          .run()
         db.insert(eventTypeStudios)
-          .values([...new Set(allowedStudioIds)].map((studioId) => ({ eventTypeId: id, studioId })))
+          .values(
+            [...new Set(allowedStudioIds)].map((studioId) => ({
+              eventTypeId: id,
+              studioId,
+            }))
+          )
           .run()
       }
       audit(db, {
@@ -258,7 +335,10 @@ export const routes = new Hono<AppEnv>()
     db.transaction(() => {
       const previous = stagesByType(db, [id]).get(id) ?? []
       // BR-005-07: existing instances keep their snapshot, so old templates are archived, never deleted.
-      db.update(stageTemplates).set({ archived: true }).where(eq(stageTemplates.eventTypeId, id)).run()
+      db.update(stageTemplates)
+        .set({ archived: true })
+        .where(eq(stageTemplates.eventTypeId, id))
+        .run()
       if (items.length)
         db.insert(stageTemplates)
           .values(
@@ -271,9 +351,10 @@ export const routes = new Hono<AppEnv>()
               offsetMinutes: s.offsetMinutes,
               recipients: s.recipients,
               assigneeRole: s.kind === "task" ? (s.assigneeRole ?? null) : null,
-              blocksCheckout: s.kind === "task" ? (s.blocksCheckout ?? false) : false,
+              blocksCheckout:
+                s.kind === "task" ? (s.blocksCheckout ?? false) : false,
               message: s.message ?? "",
-            })),
+            }))
           )
           .run()
       audit(db, {

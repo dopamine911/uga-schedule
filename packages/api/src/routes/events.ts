@@ -39,7 +39,12 @@ import { badRequest, conflict, forbidden } from "../lib/errors.ts"
 import { eventAudience, notify } from "../lib/notify.ts"
 import type { DraftInput } from "../services/booking.ts"
 import { v } from "../lib/validate.ts"
-import { checkDraft, draftOf, hasActiveHold, participantIds } from "../services/booking.ts"
+import {
+  checkDraft,
+  draftOf,
+  hasActiveHold,
+  participantIds,
+} from "../services/booking.ts"
 import {
   type EventRow,
   allowed,
@@ -65,11 +70,27 @@ import {
 
 // F-006 event booking and approval. Stage, checkout and results rules live in their own route files.
 
-const EDITABLE: readonly EventRow["state"][] = ["Draft", "Submitted", "SponsorApproved", "Confirmed"]
-const CANCELLABLE: readonly EventRow["state"][] = ["Submitted", "SponsorApproved", "Confirmed"]
+const EDITABLE: readonly EventRow["state"][] = [
+  "Draft",
+  "Submitted",
+  "SponsorApproved",
+  "Confirmed",
+]
+const CANCELLABLE: readonly EventRow["state"][] = [
+  "Submitted",
+  "SponsorApproved",
+  "Confirmed",
+]
 
-const dayInput = z.object({ day: z.string(), startTime: z.string(), endTime: z.string() })
-const lineInput = z.object({ equipmentTypeId: z.string(), qty: z.number().int().min(0) })
+const dayInput = z.object({
+  day: z.string(),
+  startTime: z.string(),
+  endTime: z.string(),
+})
+const lineInput = z.object({
+  equipmentTypeId: z.string(),
+  qty: z.number().int().min(0),
+})
 const draftBody = z.object({
   title: z.string().trim().min(1).max(200),
   description: z.string().max(5000).default(""),
@@ -94,7 +115,10 @@ const listQuery = z.object({
   state: z.string().optional(),
 })
 const submitBody = z.object({ justification: z.string().optional() })
-const sponsorBody = z.object({ decision: z.enum(["approve", "reject"]), note: z.string().default("") })
+const sponsorBody = z.object({
+  decision: z.enum(["approve", "reject"]),
+  note: z.string().default(""),
+})
 const staffBody = z.object({
   decision: z.enum(["approve", "confirm", "reject"]),
   note: z.string().default(""),
@@ -106,45 +130,94 @@ type DraftBody = z.infer<typeof draftBody>
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
-function requireState(ev: EventRow, states: readonly EventRow["state"][]): void {
+function requireState(
+  ev: EventRow,
+  states: readonly EventRow["state"][]
+): void {
   if (!states.includes(ev.state))
-    throw conflict("INVALID_STATE", `This action is not available while the event is ${ev.state}.`)
+    throw conflict(
+      "INVALID_STATE",
+      `This action is not available while the event is ${ev.state}.`
+    )
 }
 
 /** Validates references and normalises days, participants and equipment (merging duplicate types). */
 function normalise(db: DB, body: DraftBody, requesterId: string) {
   const { intervals, issues } = toIntervals(body.days, config.tz)
-  if (issues.length) throw badRequest("DAY_INVALID", issues.map((i) => i.message).join(" "), { issues })
+  if (issues.length)
+    throw badRequest("DAY_INVALID", issues.map((i) => i.message).join(" "), {
+      issues,
+    })
 
   const qtyByType = new Map<string, number>()
-  for (const l of body.lines) qtyByType.set(l.equipmentTypeId, (qtyByType.get(l.equipmentTypeId) ?? 0) + l.qty)
+  for (const l of body.lines)
+    qtyByType.set(
+      l.equipmentTypeId,
+      (qtyByType.get(l.equipmentTypeId) ?? 0) + l.qty
+    )
   const lines = [...qtyByType]
     .filter(([, qty]) => qty > 0)
     .map(([equipmentTypeId, qty]) => ({ equipmentTypeId, qty }))
-  const participants = [...new Set(body.participantIds)].filter((id) => id !== requesterId && id !== body.sponsorId)
+  const participants = [...new Set(body.participantIds)].filter(
+    (id) => id !== requesterId && id !== body.sponsorId
+  )
 
-  if (!db.select({ id: eventTypes.id }).from(eventTypes).where(eq(eventTypes.id, body.eventTypeId)).get())
+  if (
+    !db
+      .select({ id: eventTypes.id })
+      .from(eventTypes)
+      .where(eq(eventTypes.id, body.eventTypeId))
+      .get()
+  )
     throw badRequest("UNKNOWN_EVENT_TYPE", "Unknown event type.")
-  if (!db.select({ id: studios.id }).from(studios).where(eq(studios.id, body.studioId)).get())
+  if (
+    !db
+      .select({ id: studios.id })
+      .from(studios)
+      .where(eq(studios.id, body.studioId))
+      .get()
+  )
     throw badRequest("UNKNOWN_STUDIO", "Unknown studio.")
-  if (body.sponsorId && !db.select({ id: users.id }).from(users).where(eq(users.id, body.sponsorId)).get())
+  if (
+    body.sponsorId &&
+    !db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, body.sponsorId))
+      .get()
+  )
     throw badRequest("UNKNOWN_SPONSOR", "Unknown sponsor.")
   if (participants.length) {
-    const found = db.select({ id: users.id }).from(users).where(inArray(users.id, participants)).all()
-    if (found.length !== participants.length) throw badRequest("UNKNOWN_PARTICIPANT", "Unknown participant.")
+    const found = db
+      .select({ id: users.id })
+      .from(users)
+      .where(inArray(users.id, participants))
+      .all()
+    if (found.length !== participants.length)
+      throw badRequest("UNKNOWN_PARTICIPANT", "Unknown participant.")
   }
   if (lines.length) {
     const found = db
       .select({ id: equipmentTypes.id })
       .from(equipmentTypes)
-      .where(inArray(equipmentTypes.id, lines.map((l) => l.equipmentTypeId)))
+      .where(
+        inArray(
+          equipmentTypes.id,
+          lines.map((l) => l.equipmentTypeId)
+        )
+      )
       .all()
-    if (found.length !== lines.length) throw badRequest("UNKNOWN_EQUIPMENT", "Unknown equipment type.")
+    if (found.length !== lines.length)
+      throw badRequest("UNKNOWN_EQUIPMENT", "Unknown equipment type.")
   }
   return { intervals, lines, participants }
 }
 
-function draftInput(requesterId: string, body: DraftBody, lines: { equipmentTypeId: string; qty: number }[]): DraftInput {
+function draftInput(
+  requesterId: string,
+  body: DraftBody,
+  lines: { equipmentTypeId: string; qty: number }[]
+): DraftInput {
   return {
     requesterId,
     sponsorId: body.sponsorId,
@@ -164,26 +237,46 @@ function writeRows(
   eventId: string,
   intervals: readonly DayInterval[],
   lines: readonly { equipmentTypeId: string; qty: number }[],
-  participants: readonly string[],
+  participants: readonly string[]
 ): void {
   const existing = daysOf(db, eventId)
   const wanted = [...intervals].sort((a, b) => a.day.localeCompare(b.day))
   wanted.forEach((d, i) => {
-    const row = { day: d.day, startTime: d.startTime, endTime: d.endTime, startsAt: d.start, endsAt: d.end }
+    const row = {
+      day: d.day,
+      startTime: d.startTime,
+      endTime: d.endTime,
+      startsAt: d.start,
+      endsAt: d.end,
+    }
     const keep = existing[i]
-    if (keep) db.update(eventDays).set(row).where(eq(eventDays.id, keep.id)).run()
-    else db.insert(eventDays).values({ ...row, eventId }).run()
+    if (keep)
+      db.update(eventDays).set(row).where(eq(eventDays.id, keep.id)).run()
+    else
+      db.insert(eventDays)
+        .values({ ...row, eventId })
+        .run()
   })
   const surplus = existing.slice(wanted.length).map((d) => d.id)
-  if (surplus.length) db.delete(eventDays).where(inArray(eventDays.id, surplus)).run()
+  if (surplus.length)
+    db.delete(eventDays).where(inArray(eventDays.id, surplus)).run()
   db.delete(equipmentLines).where(eq(equipmentLines.eventId, eventId)).run()
-  db.delete(eventParticipants).where(eq(eventParticipants.eventId, eventId)).run()
-  if (lines.length) db.insert(equipmentLines).values(lines.map((l) => ({ ...l, eventId }))).run()
+  db.delete(eventParticipants)
+    .where(eq(eventParticipants.eventId, eventId))
+    .run()
+  if (lines.length)
+    db.insert(equipmentLines)
+      .values(lines.map((l) => ({ ...l, eventId })))
+      .run()
   if (participants.length)
-    db.insert(eventParticipants).values(participants.map((userId) => ({ eventId, userId }))).run()
+    db.insert(eventParticipants)
+      .values(participants.map((userId) => ({ eventId, userId })))
+      .run()
 }
 
-function dayKey(days: readonly { day: string; startTime: string; endTime: string }[]): string {
+function dayKey(
+  days: readonly { day: string; startTime: string; endTime: string }[]
+): string {
   return days.map((d) => `${d.day} ${d.startTime}-${d.endTime}`).join("|")
 }
 
@@ -195,9 +288,27 @@ interface Lookups {
 
 function lookupsOf(db: DB): Lookups {
   return {
-    users: new Map(db.select({ id: users.id, displayName: users.displayName }).from(users).all().map((u) => [u.id, u])),
-    studios: new Map(db.select({ id: studios.id, name: studios.name }).from(studios).all().map((s) => [s.id, s])),
-    types: new Map(db.select({ id: eventTypes.id, name: eventTypes.name }).from(eventTypes).all().map((t) => [t.id, t])),
+    users: new Map(
+      db
+        .select({ id: users.id, displayName: users.displayName })
+        .from(users)
+        .all()
+        .map((u) => [u.id, u])
+    ),
+    studios: new Map(
+      db
+        .select({ id: studios.id, name: studios.name })
+        .from(studios)
+        .all()
+        .map((s) => [s.id, s])
+    ),
+    types: new Map(
+      db
+        .select({ id: eventTypes.id, name: eventTypes.name })
+        .from(eventTypes)
+        .all()
+        .map((t) => [t.id, t])
+    ),
   }
 }
 
@@ -212,10 +323,18 @@ function summaryOf(db: DB, ev: EventRow, look: Lookups) {
     needsReview: ev.needsReview,
     reviewReasons: ev.reviewReasons,
     overrideRequested: ev.overrideRequested,
-    eventType: { id: ev.eventTypeId, name: look.types.get(ev.eventTypeId)?.name ?? "" },
-    studio: { id: ev.studioId, name: look.studios.get(ev.studioId)?.name ?? "" },
+    eventType: {
+      id: ev.eventTypeId,
+      name: look.types.get(ev.eventTypeId)?.name ?? "",
+    },
+    studio: {
+      id: ev.studioId,
+      name: look.studios.get(ev.studioId)?.name ?? "",
+    },
     requester: { id: requester.id, displayName: requester.displayName },
-    sponsor: sponsor ? { id: sponsor.id, displayName: sponsor.displayName } : null,
+    sponsor: sponsor
+      ? { id: sponsor.id, displayName: sponsor.displayName }
+      : null,
     days: daysOf(db, ev.id).map((d) => ({
       day: d.day,
       startTime: d.startTime,
@@ -231,7 +350,11 @@ function summaryOf(db: DB, ev: EventRow, look: Lookups) {
 function detailOf(db: DB, user: SessionUser, ev: EventRow) {
   const look = lookupsOf(db)
   const type = typeOf(db, ev.eventTypeId)
-  const studio = db.select().from(studios).where(eq(studios.id, ev.studioId)).get()!
+  const studio = db
+    .select()
+    .from(studios)
+    .where(eq(studios.id, ev.studioId))
+    .get()!
   const pkg = packageOf(db, ev.id)
   const stages = stagesOf(db, ev.id)
   const records = recordsOf(db, ev.id)
@@ -249,14 +372,24 @@ function detailOf(db: DB, user: SessionUser, ev: EventRow) {
       note: equipmentLines.note,
     })
     .from(equipmentLines)
-    .innerJoin(equipmentTypes, eq(equipmentTypes.id, equipmentLines.equipmentTypeId))
-    .innerJoin(equipmentClasses, eq(equipmentClasses.id, equipmentTypes.classId))
+    .innerJoin(
+      equipmentTypes,
+      eq(equipmentTypes.id, equipmentLines.equipmentTypeId)
+    )
+    .innerJoin(
+      equipmentClasses,
+      eq(equipmentClasses.id, equipmentTypes.classId)
+    )
     .where(eq(equipmentLines.eventId, ev.id))
     .all()
   const typeNames = new Map(lines.map((l) => [l.equipmentTypeId, l.typeName]))
   // Asset tags are for the desk and inventory staff only (F-001 §3 note 3).
-  const seesTags = can(user, "checkout.perform", { studioId: ev.studioId }) || can(user, "inventory.manage")
-  const unitIds = seesTags ? records.flatMap((r) => (r.unitId ? [r.unitId] : [])) : []
+  const seesTags =
+    can(user, "checkout.perform", { studioId: ev.studioId }) ||
+    can(user, "inventory.manage")
+  const unitIds = seesTags
+    ? records.flatMap((r) => (r.unitId ? [r.unitId] : []))
+    : []
   const assetTags = new Map(
     unitIds.length
       ? db
@@ -265,14 +398,20 @@ function detailOf(db: DB, user: SessionUser, ev: EventRow) {
           .where(inArray(equipmentUnits.id, unitIds))
           .all()
           .map((u) => [u.id, u.assetTag])
-      : [],
+      : []
   )
 
   const holdRows = can(user, "hold.view", { own: mine, studioId: ev.studioId })
     ? db.select().from(holds).where(eq(holds.eventId, ev.id)).all()
     : []
-  const overrides = can(user, "event.override_policy", { studioId: ev.studioId })
-    ? db.select().from(policyOverrides).where(eq(policyOverrides.eventId, ev.id)).all()
+  const overrides = can(user, "event.override_policy", {
+    studioId: ev.studioId,
+  })
+    ? db
+        .select()
+        .from(policyOverrides)
+        .where(eq(policyOverrides.eventId, ev.id))
+        .all()
     : []
   const outstanding = records.filter((r) => outstandingQty(r) > 0)
   const collecting = pkg?.status === "collecting"
@@ -361,34 +500,63 @@ function detailOf(db: DB, user: SessionUser, ev: EventRow) {
       autoClearAt: h.autoClearAt,
       createdAt: h.createdAt,
     })),
-    policyOverrides: overrides.map((o) => ({ id: o.id, ruleCode: o.ruleCode, actorId: o.actorId, reason: o.reason, at: o.at })),
+    policyOverrides: overrides.map((o) => ({
+      id: o.id,
+      ruleCode: o.ruleCode,
+      actorId: o.actorId,
+      reason: o.reason,
+      at: o.at,
+    })),
     resultPackage: pkg ? { id: pkg.id, status: pkg.status } : null,
     nextAction: nextActionFor(db, ev),
     can: {
-      edit: EDITABLE.includes(ev.state) && allowed(user, "event.edit", ev.studioId, mine),
+      edit:
+        EDITABLE.includes(ev.state) &&
+        allowed(user, "event.edit", ev.studioId, mine),
       submit: ev.state === "Draft" && mine,
-      cancel: CANCELLABLE.includes(ev.state) && allowed(user, "event.cancel", ev.studioId, mine || isSponsor),
+      cancel:
+        CANCELLABLE.includes(ev.state) &&
+        allowed(user, "event.cancel", ev.studioId, mine || isSponsor),
       sponsorDecide:
-        ev.state === "Submitted" && isSponsor && !mine && allowed(user, "event.sponsor_decide", ev.studioId, true),
-      staffDecide: ev.state === "SponsorApproved" && !mine && allowed(user, "event.staff_decide", ev.studioId),
-      resolveReview: ev.needsReview && !mine && allowed(user, "event.staff_decide", ev.studioId),
-      checkout: ev.state === "Confirmed" && allowed(user, "checkout.perform", ev.studioId),
+        ev.state === "Submitted" &&
+        isSponsor &&
+        !mine &&
+        allowed(user, "event.sponsor_decide", ev.studioId, true),
+      staffDecide:
+        ev.state === "SponsorApproved" &&
+        !mine &&
+        allowed(user, "event.staff_decide", ev.studioId),
+      resolveReview:
+        ev.needsReview &&
+        !mine &&
+        allowed(user, "event.staff_decide", ev.studioId),
+      checkout:
+        ev.state === "Confirmed" &&
+        allowed(user, "checkout.perform", ev.studioId),
       checkin:
         (ev.state === "InProgress" || ev.state === "PostEvent") &&
         outstanding.length > 0 &&
         allowed(user, "checkout.perform", ev.studioId),
       uploadResults:
-        collecting && (allowed(user, "results.upload", ev.studioId) || (mine && type.requesterCanUpload)),
-      publishResults: collecting && allowed(user, "results.upload", ev.studioId),
-      signoff: pkg?.sponsorSignoff === "pending" && isSponsor && type.requiresSponsorSignoff,
-      completeTask: stages.filter((s) => canCompleteStage(user, ev, s)).map((s) => s.id),
+        collecting &&
+        (allowed(user, "results.upload", ev.studioId) ||
+          (mine && type.requesterCanUpload)),
+      publishResults:
+        collecting && allowed(user, "results.upload", ev.studioId),
+      signoff:
+        pkg?.sponsorSignoff === "pending" &&
+        isSponsor &&
+        type.requiresSponsorSignoff,
+      completeTask: stages
+        .filter((s) => canCompleteStage(user, ev, s))
+        .map((s) => s.id),
       overrideTask: stages
         .filter(
           (s) =>
             s.kind === "task" &&
             s.blocksCheckout &&
             (s.status === "open" || s.status === "overdue") &&
-            allowed(user, "stage.override_block", ev.studioId),
+            allowed(user, "stage.override_block", ev.studioId)
         )
         .map((s) => s.id),
     },
@@ -399,10 +567,18 @@ function detailOf(db: DB, user: SessionUser, ev: EventRow) {
 function notifyChanged(db: DB, ev: EventRow, before: EventRow["state"]): void {
   notify(db, {
     code: "EVENT_CHANGED",
-    to: eventAudience(db, ev.id, ["requester", "participants", "sponsor", "studio_staff"]),
+    to: eventAudience(db, ev.id, [
+      "requester",
+      "participants",
+      "sponsor",
+      "studio_staff",
+    ]),
     eventId: ev.id,
     subject: `Changed: ${ev.title}`,
-    body: before === ev.state ? "The request was changed." : `The request was changed and is now ${ev.state}.`,
+    body:
+      before === ev.state
+        ? "The request was changed."
+        : `The request was changed and is now ${ev.state}.`,
     key: `EVENT_CHANGED:${ev.id}:${ev.sequence}`,
   })
 }
@@ -418,17 +594,31 @@ export const routes = new Hono<AppEnv>()
     if (q.scope === "all") {
       if (!hasUnscoped(user, "event.view")) throw forbidden()
       const excluded = deniedStudios(user, "event.view")
-      candidates = db.select().from(events).all().filter((e) => !excluded.includes(e.studioId))
+      candidates = db
+        .select()
+        .from(events)
+        .all()
+        .filter((e) => !excluded.includes(e.studioId))
     } else if (q.scope === "sponsoring") {
-      candidates = db.select().from(events).where(eq(events.sponsorId, user.id)).all()
+      candidates = db
+        .select()
+        .from(events)
+        .where(eq(events.sponsorId, user.id))
+        .all()
     } else if (q.scope === "studio") {
       // Admins hold event.view everywhere, so their queue covers every studio (BR-006-09).
       const ids = studiosFor(user, "event.view")
       if (hasUnscoped(user, "event.view")) {
         const excluded = deniedStudios(user, "event.view")
-        candidates = db.select().from(events).all().filter((e) => !excluded.includes(e.studioId))
-      }
-      else candidates = ids.length ? db.select().from(events).where(inArray(events.studioId, ids)).all() : []
+        candidates = db
+          .select()
+          .from(events)
+          .all()
+          .filter((e) => !excluded.includes(e.studioId))
+      } else
+        candidates = ids.length
+          ? db.select().from(events).where(inArray(events.studioId, ids)).all()
+          : []
     } else {
       const partOf = new Set(
         db
@@ -436,7 +626,7 @@ export const routes = new Hono<AppEnv>()
           .from(eventParticipants)
           .where(eq(eventParticipants.userId, user.id))
           .all()
-          .map((r) => r.eventId),
+          .map((r) => r.eventId)
       )
       candidates = db
         .select()
@@ -446,16 +636,23 @@ export const routes = new Hono<AppEnv>()
     }
     const look = lookupsOf(db)
     const rows = candidates
-      .filter((e) => (q.state ? e.state === q.state : true) && canViewEvent(db, user, e))
+      .filter(
+        (e) =>
+          (q.state ? e.state === q.state : true) && canViewEvent(db, user, e)
+      )
       .map((e) => summaryOf(db, e, look))
-      .sort((a, b) => (a.days[0]?.startsAt ?? "").localeCompare(b.days[0]?.startsAt ?? ""))
+      .sort((a, b) =>
+        (a.days[0]?.startsAt ?? "").localeCompare(b.days[0]?.startsAt ?? "")
+      )
     return c.json(rows)
   })
   .post("/check", v("json", checkBody), (c) => {
     const user = requireUser(c)
     const db = c.var.db
     const body = c.req.valid("json")
-    const requesterId = body.excludeEventId ? visibleEvent(db, user, body.excludeEventId).requesterId : user.id
+    const requesterId = body.excludeEventId
+      ? visibleEvent(db, user, body.excludeEventId).requesterId
+      : user.id
     const issues = checkDraft(
       db,
       {
@@ -466,7 +663,7 @@ export const routes = new Hono<AppEnv>()
         days: body.days,
         lines: body.lines.filter((l) => l.qty > 0),
       },
-      body.excludeEventId,
+      body.excludeEventId
     )
     return c.json({ issues })
   })
@@ -491,7 +688,13 @@ export const routes = new Hono<AppEnv>()
         .returning()
         .get()
       writeRows(db, ev.id, intervals, lines, participants)
-      audit(db, { actorId: user.id, action: "event.create", entityType: "event", entityId: ev.id, after: { title: ev.title, state: "Draft" } })
+      audit(db, {
+        actorId: user.id,
+        action: "event.create",
+        entityType: "event",
+        entityId: ev.id,
+        after: { title: ev.title, state: "Draft" },
+      })
       return ev.id
     })
     return c.json(detailOf(db, user, getEvent(db, id)!), 201)
@@ -506,11 +709,20 @@ export const routes = new Hono<AppEnv>()
     const db = c.var.db
     const body = c.req.valid("json")
     const ev = visibleEvent(db, user, c.req.param("id"))
-    if (!allowed(user, "event.edit", ev.studioId, isRequester(user, ev))) throw forbidden()
+    if (!allowed(user, "event.edit", ev.studioId, isRequester(user, ev)))
+      throw forbidden()
     requireState(ev, EDITABLE)
     // Staff may only move a request into a studio they also cover.
-    if (body.studioId !== ev.studioId && !allowed(user, "event.edit", body.studioId, isRequester(user, ev))) throw forbidden()
-    const { intervals, lines, participants } = normalise(db, body, ev.requesterId)
+    if (
+      body.studioId !== ev.studioId &&
+      !allowed(user, "event.edit", body.studioId, isRequester(user, ev))
+    )
+      throw forbidden()
+    const { intervals, lines, participants } = normalise(
+      db,
+      body,
+      ev.requesterId
+    )
     const patch = {
       title: body.title,
       description: body.description,
@@ -521,9 +733,18 @@ export const routes = new Hono<AppEnv>()
 
     if (ev.state === "Draft") {
       const out = db.transaction(() => {
-        db.update(events).set({ ...patch, updatedAt: now() }).where(eq(events.id, ev.id)).run()
+        db.update(events)
+          .set({ ...patch, updatedAt: now() })
+          .where(eq(events.id, ev.id))
+          .run()
         writeRows(db, ev.id, intervals, lines, participants)
-        audit(db, { actorId: user.id, action: "event.edit", entityType: "event", entityId: ev.id, before: { state: "Draft" } })
+        audit(db, {
+          actorId: user.id,
+          action: "event.edit",
+          entityType: "event",
+          entityId: ev.id,
+          before: { state: "Draft" },
+        })
         return detailOf(db, user, getEvent(db, ev.id)!)
       })
       return c.json(out)
@@ -532,19 +753,33 @@ export const routes = new Hono<AppEnv>()
     // BR-006-11: classify the change against the stored request.
     const old = draftOf(db, ev.id)
     const oldQty = new Map<string, number>()
-    for (const l of old.lines) oldQty.set(l.equipmentTypeId, (oldQty.get(l.equipmentTypeId) ?? 0) + l.qty)
+    for (const l of old.lines)
+      oldQty.set(
+        l.equipmentTypeId,
+        (oldQty.get(l.equipmentTypeId) ?? 0) + l.qty
+      )
     const action: EventAction | null = editAction({
       sponsorChanged: (old.sponsorId ?? null) !== (body.sponsorId ?? null),
       typeChanged: old.eventTypeId !== body.eventTypeId,
       studioChanged: old.studioId !== body.studioId,
       daysChanged: dayKey(old.days) !== dayKey(intervals),
-      equipmentIncreased: lines.some((l) => l.qty > (oldQty.get(l.equipmentTypeId) ?? 0)),
+      equipmentIncreased: lines.some(
+        (l) => l.qty > (oldQty.get(l.equipmentTypeId) ?? 0)
+      ),
     })
     const target = action ? nextState(ev.state, action) : ev.state
-    if (!target) throw conflict("INVALID_TRANSITION", `Cannot change an event that is ${ev.state}.`)
+    if (!target)
+      throw conflict(
+        "INVALID_TRANSITION",
+        `Cannot change an event that is ${ev.state}.`
+      )
 
     const out = db.transaction(() => {
-      const issues = checkDraft(db, draftInput(ev.requesterId, body, lines), ev.id)
+      const issues = checkDraft(
+        db,
+        draftInput(ev.requesterId, body, lines),
+        ev.id
+      )
       if (hasHard(issues)) throw issuesConflict(issues)
       const soft = softCodes(issues)
       const justification = body.justification?.trim() ?? ""
@@ -565,7 +800,8 @@ export const routes = new Hono<AppEnv>()
         reviewReasons: [],
       }
       let updated: EventRow
-      if (action) updated = moveEvent(db, ev, action, user.id, fields, "request changed")
+      if (action)
+        updated = moveEvent(db, ev, action, user.id, fields, "request changed")
       else {
         updated = db
           .update(events)
@@ -583,7 +819,8 @@ export const routes = new Hono<AppEnv>()
         })
       }
       writeRows(db, ev.id, intervals, lines, participants)
-      if (ev.state === "Confirmed" && updated.state !== "Confirmed") cancelScheduledReminders(db, ev.id)
+      if (ev.state === "Confirmed" && updated.state !== "Confirmed")
+        cancelScheduledReminders(db, ev.id)
       notifyChanged(db, updated, ev.state)
       return detailOf(db, user, updated)
     })
@@ -597,7 +834,13 @@ export const routes = new Hono<AppEnv>()
     requireState(ev, ["Draft"])
     db.transaction(() => {
       db.delete(events).where(eq(events.id, ev.id)).run()
-      audit(db, { actorId: user.id, action: "event.delete", entityType: "event", entityId: ev.id, before: { title: ev.title } })
+      audit(db, {
+        actorId: user.id,
+        action: "event.delete",
+        entityType: "event",
+        entityId: ev.id,
+        before: { title: ev.title },
+      })
     })
     return c.json({ ok: true as const })
   })
@@ -634,7 +877,9 @@ export const routes = new Hono<AppEnv>()
         to: current.sponsorId ? [current.sponsorId] : [],
         eventId: current.id,
         subject: `Approval needed: ${current.title}`,
-        body: soft.length ? `Justification given for: ${soft.join(", ")}.\n${justification}` : "Please approve or reject this request.",
+        body: soft.length
+          ? `Justification given for: ${soft.join(", ")}.\n${justification}`
+          : "Please approve or reject this request.",
         key: `EVENT_SUBMITTED:${current.id}:sponsor`,
       })
       return detailOf(db, user, updated)
@@ -648,7 +893,8 @@ export const routes = new Hono<AppEnv>()
     const ev = visibleEvent(db, user, c.req.param("id"))
     if (ev.sponsorId !== user.id || isRequester(user, ev))
       throw forbidden("Only the sponsor can decide on this request.")
-    if (!allowed(user, "event.sponsor_decide", ev.studioId, true)) throw forbidden()
+    if (!allowed(user, "event.sponsor_decide", ev.studioId, true))
+      throw forbidden()
     const note = body.note.trim()
     const out = db.transaction(() => {
       const current = getEvent(db, ev.id)!
@@ -657,7 +903,10 @@ export const routes = new Hono<AppEnv>()
         // BR-006-03: hard checks run again on approval.
         const issues = checkDraft(db, draftOf(db, current.id), current.id)
         if (hasHard(issues)) throw issuesConflict(issues)
-        const updated = moveEvent(db, current, "sponsor_approve", user.id, { sponsorDecidedAt: now(), decisionNote: note })
+        const updated = moveEvent(db, current, "sponsor_approve", user.id, {
+          sponsorDecidedAt: now(),
+          decisionNote: note,
+        })
         notify(db, {
           code: "EVENT_SPONSOR_APPROVED",
           to: eventAudience(db, current.id, ["requester"]),
@@ -676,8 +925,19 @@ export const routes = new Hono<AppEnv>()
         })
         return detailOf(db, user, updated)
       }
-      if (!note) throw badRequest("NOTE_REQUIRED", "A reason is required to reject a request.")
-      const updated = moveEvent(db, current, "sponsor_reject", user.id, { sponsorDecidedAt: now(), decisionNote: note }, note)
+      if (!note)
+        throw badRequest(
+          "NOTE_REQUIRED",
+          "A reason is required to reject a request."
+        )
+      const updated = moveEvent(
+        db,
+        current,
+        "sponsor_reject",
+        user.id,
+        { sponsorDecidedAt: now(), decisionNote: note },
+        note
+      )
       notify(db, {
         code: "EVENT_REJECTED",
         to: eventAudience(db, current.id, ["requester", "sponsor"]),
@@ -695,15 +955,27 @@ export const routes = new Hono<AppEnv>()
     const db = c.var.db
     const body = c.req.valid("json")
     const ev = visibleEvent(db, user, c.req.param("id"))
-    if (isRequester(user, ev)) throw forbidden("You cannot decide on your own request.")
+    if (isRequester(user, ev))
+      throw forbidden("You cannot decide on your own request.")
     if (!allowed(user, "event.staff_decide", ev.studioId)) throw forbidden()
     const note = body.note.trim()
     const out = db.transaction(() => {
       const current = getEvent(db, ev.id)!
       requireState(current, ["SponsorApproved"])
       if (body.decision === "reject") {
-        if (!note) throw badRequest("NOTE_REQUIRED", "A reason is required to reject a request.")
-        const updated = moveEvent(db, current, "staff_reject", user.id, { staffDecidedAt: now(), decisionNote: note }, note)
+        if (!note)
+          throw badRequest(
+            "NOTE_REQUIRED",
+            "A reason is required to reject a request."
+          )
+        const updated = moveEvent(
+          db,
+          current,
+          "staff_reject",
+          user.id,
+          { staffDecidedAt: now(), decisionNote: note },
+          note
+        )
         notify(db, {
           code: "EVENT_REJECTED",
           to: eventAudience(db, current.id, ["requester", "sponsor"]),
@@ -718,28 +990,60 @@ export const routes = new Hono<AppEnv>()
       // BR-006-06: hard rules block; soft rules need a reason recorded as a policy override.
       const issues = checkDraft(db, draftOf(db, current.id), current.id)
       if (hasHard(issues)) throw issuesConflict(issues)
-      const needed = [...new Set<SoftPolicyCode>([...current.overrideRequested, ...softCodes(issues)])]
+      const needed = [
+        ...new Set<SoftPolicyCode>([
+          ...current.overrideRequested,
+          ...softCodes(issues),
+        ]),
+      ]
       const reason = body.overrideReason?.trim() ?? ""
       if (needed.length && !reason)
-        throw conflict("OVERRIDE_REASON_REQUIRED", "Give a reason to approve the requested policy overrides.", {
-          codes: needed,
-        })
+        throw conflict(
+          "OVERRIDE_REASON_REQUIRED",
+          "Give a reason to approve the requested policy overrides.",
+          {
+            codes: needed,
+          }
+        )
       for (const code of needed) {
-        db.insert(policyOverrides).values({ eventId: current.id, ruleCode: code, actorId: user.id, reason }).run()
-        audit(db, { actorId: user.id, action: "policy.override", entityType: "event", entityId: current.id, after: { rule: code }, reason })
+        db.insert(policyOverrides)
+          .values({
+            eventId: current.id,
+            ruleCode: code,
+            actorId: user.id,
+            reason,
+          })
+          .run()
+        audit(db, {
+          actorId: user.id,
+          action: "policy.override",
+          entityType: "event",
+          entityId: current.id,
+          after: { rule: code },
+          reason,
+        })
       }
       const updated = moveEvent(
         db,
         current,
         "staff_confirm",
         user.id,
-        { staffDecidedAt: now(), decisionNote: note, needsReview: false, reviewReasons: [] },
-        reason,
+        {
+          staffDecidedAt: now(),
+          decisionNote: note,
+          needsReview: false,
+          reviewReasons: [],
+        },
+        reason
       )
       notifyTasksOpened(db, updated, planEventStages(db, updated))
       notify(db, {
         code: "EVENT_CONFIRMED",
-        to: eventAudience(db, current.id, ["requester", "participants", "sponsor"]),
+        to: eventAudience(db, current.id, [
+          "requester",
+          "participants",
+          "sponsor",
+        ]),
         eventId: current.id,
         subject: `Confirmed: ${current.title}`,
         body: note || "Your studio booking is confirmed.",
@@ -757,15 +1061,31 @@ export const routes = new Hono<AppEnv>()
     const own = isRequester(user, ev) || ev.sponsorId === user.id
     if (!allowed(user, "event.cancel", ev.studioId, own)) throw forbidden()
     const reason = body.reason.trim()
-    if (!own && !reason) throw badRequest("REASON_REQUIRED", "A reason is required to cancel as staff.")
+    if (!own && !reason)
+      throw badRequest(
+        "REASON_REQUIRED",
+        "A reason is required to cancel as staff."
+      )
     const out = db.transaction(() => {
       const current = getEvent(db, ev.id)!
       requireState(current, CANCELLABLE)
-      const updated = moveEvent(db, current, "cancel", user.id, { cancelReason: reason }, reason)
+      const updated = moveEvent(
+        db,
+        current,
+        "cancel",
+        user.id,
+        { cancelReason: reason },
+        reason
+      )
       cancelOpenStages(db, current.id)
       notify(db, {
         code: "EVENT_CANCELLED",
-        to: eventAudience(db, current.id, ["requester", "participants", "sponsor", "studio_staff"]),
+        to: eventAudience(db, current.id, [
+          "requester",
+          "participants",
+          "sponsor",
+          "studio_staff",
+        ]),
         eventId: current.id,
         subject: `Cancelled: ${current.title}`,
         body: reason || "The request was cancelled.",
@@ -780,15 +1100,30 @@ export const routes = new Hono<AppEnv>()
     const db = c.var.db
     const body = c.req.valid("json")
     const ev = visibleEvent(db, user, c.req.param("id"))
-    if (isRequester(user, ev)) throw forbidden("You cannot resolve a review on your own request.")
+    if (isRequester(user, ev))
+      throw forbidden("You cannot resolve a review on your own request.")
     if (!allowed(user, "event.staff_decide", ev.studioId)) throw forbidden()
-    if (!ev.needsReview) throw conflict("NOT_FLAGGED", "This request has no review flag.")
+    if (!ev.needsReview)
+      throw conflict("NOT_FLAGGED", "This request has no review flag.")
     const reason = body.reason.trim()
-    if (!reason) throw badRequest("REASON_REQUIRED", "A reason is required to accept the request as-is.")
-    if (ev.reviewReasons.includes("HOLD_ACTIVE") && hasActiveHold(db, ev.requesterId))
-      throw conflict("HOLD_ACTIVE", "The requester still has an active hold. Clear the hold or cancel the request.")
+    if (!reason)
+      throw badRequest(
+        "REASON_REQUIRED",
+        "A reason is required to accept the request as-is."
+      )
+    if (
+      ev.reviewReasons.includes("HOLD_ACTIVE") &&
+      hasActiveHold(db, ev.requesterId)
+    )
+      throw conflict(
+        "HOLD_ACTIVE",
+        "The requester still has an active hold. Clear the hold or cancel the request."
+      )
     const out = db.transaction(() => {
-      db.update(events).set({ needsReview: false, reviewReasons: [], updatedAt: now() }).where(eq(events.id, ev.id)).run()
+      db.update(events)
+        .set({ needsReview: false, reviewReasons: [], updatedAt: now() })
+        .where(eq(events.id, ev.id))
+        .run()
       audit(db, {
         actorId: user.id,
         action: "event.resolve_review",

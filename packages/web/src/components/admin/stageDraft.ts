@@ -1,4 +1,8 @@
-import type { STAGE_ANCHORS, STAGE_KINDS, STAGE_RECIPIENTS } from "@studio/domain"
+import type {
+  STAGE_ANCHORS,
+  STAGE_KINDS,
+  STAGE_RECIPIENTS,
+} from "@studio/domain"
 import type { EventTypeDetail } from "@/components/admin/pickers"
 
 // Form model for one stage in the event type editor (F-005), and its conversion to and from the API shape.

@@ -1,4 +1,9 @@
-import { type IssueCode, REVIEWABLE, type ReviewReason, validateSubmission } from "@studio/domain"
+import {
+  type IssueCode,
+  REVIEWABLE,
+  type ReviewReason,
+  validateSubmission,
+} from "@studio/domain"
 import { and, eq, inArray } from "drizzle-orm"
 import type { DB } from "../db/client.ts"
 import { equipmentLines, events } from "../db/schema.ts"
@@ -46,10 +51,12 @@ export function recheckEvents(db: DB, scope: RecheckScope): string[] {
       .from(events)
       .where(
         and(
-          scope.requesterId ? eq(events.requesterId, scope.requesterId) : undefined,
+          scope.requesterId
+            ? eq(events.requesterId, scope.requesterId)
+            : undefined,
           scope.sponsorId ? eq(events.sponsorId, scope.sponsorId) : undefined,
-          scope.studioId ? eq(events.studioId, scope.studioId) : undefined,
-        ),
+          scope.studioId ? eq(events.studioId, scope.studioId) : undefined
+        )
       )
       .all()
       .map((r) => r.id)
@@ -58,15 +65,29 @@ export function recheckEvents(db: DB, scope: RecheckScope): string[] {
   const open = db
     .select()
     .from(events)
-    .where(and(inArray(events.id, [...new Set(ids)]), inArray(events.state, [...REVIEWABLE])))
+    .where(
+      and(
+        inArray(events.id, [...new Set(ids)]),
+        inArray(events.state, [...REVIEWABLE])
+      )
+    )
     .all()
   const flagged: string[] = []
   for (const ev of open) {
     const draft = draftOf(db, ev.id)
     // Shortage is attributed to the later-created event (US-003-03): only count earlier reservations.
-    const ctx = buildSubmissionContext(db, draft, { excludeEventId: ev.id, createdBefore: ev.createdAt })
+    const ctx = buildSubmissionContext(db, draft, {
+      excludeEventId: ev.id,
+      createdBefore: ev.createdAt,
+    })
     const issues = validateSubmission(ctx)
-    const reasons = [...new Set(issues.map((i) => REASON_OF[i.code]).filter((r): r is ReviewReason => !!r))]
+    const reasons = [
+      ...new Set(
+        issues
+          .map((i) => REASON_OF[i.code])
+          .filter((r): r is ReviewReason => !!r)
+      ),
+    ]
     const added = reasons.filter((r) => !ev.reviewReasons.includes(r))
     if (added.length === 0) continue
     const merged = [...new Set([...ev.reviewReasons, ...reasons])]

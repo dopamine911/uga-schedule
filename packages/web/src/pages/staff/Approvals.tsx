@@ -343,7 +343,9 @@ function RowActions({
       {kind === "staff" && can.staffDecide && (
         <StaffDecisionActions ev={ev} overrides={d?.overrideRequested ?? []} />
       )}
-      {kind === "review" && can.resolveReview && <ReviewResolveAction ev={ev} />}
+      {kind === "review" && can.resolveReview && (
+        <ReviewResolveAction ev={ev} />
+      )}
       <Button variant="ghost" asChild>
         <Link to={`/events/${ev.id}`}>
           Open event

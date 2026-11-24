@@ -4,7 +4,13 @@ import type { Dispatch, SetStateAction } from "react"
 import { IconTitle } from "@/components/common"
 import { EquipmentPicker } from "@/components/events/EquipmentPicker"
 import type { DraftForm } from "@/components/events/draft"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 
 /** Section 3: equipment available on the request's days. */
 export function EquipmentCard({

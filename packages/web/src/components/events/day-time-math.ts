@@ -139,7 +139,10 @@ export function conflictOf(
   end: number | null
 ): boolean {
   return (
-    start !== null && end !== null && end > start && isBlocked(rules, start, end)
+    start !== null &&
+    end !== null &&
+    end > start &&
+    isBlocked(rules, start, end)
   )
 }
 

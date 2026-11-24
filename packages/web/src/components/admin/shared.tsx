@@ -182,7 +182,10 @@ export function ConfirmButton({
   )
 }
 
-const STATUS_TONE: Record<string, "success" | "info" | "warning" | "destructive" | "neutral"> = {
+const STATUS_TONE: Record<
+  string,
+  "success" | "info" | "warning" | "destructive" | "neutral"
+> = {
   active: "success",
   available: "success",
   enrolled: "success",
@@ -202,7 +205,9 @@ const STATUS_TONE: Record<string, "success" | "info" | "warning" | "destructive"
 
 /** Active/inactive (or any status code) as a toned badge. */
 export function StatusBadge({ status }: { status: string }) {
-  return <Badge variant={STATUS_TONE[status] ?? "neutral"}>{humanize(status)}</Badge>
+  return (
+    <Badge variant={STATUS_TONE[status] ?? "neutral"}>{humanize(status)}</Badge>
+  )
 }
 
 export interface PickedUser {

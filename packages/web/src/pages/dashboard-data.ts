@@ -90,7 +90,9 @@ export function clearanceSentence(
 }
 
 /** Holds that currently block new requests. */
-export function activeHoldsOf(holds: readonly HoldRow[] | undefined): HoldRow[] {
+export function activeHoldsOf(
+  holds: readonly HoldRow[] | undefined
+): HoldRow[] {
   return (holds ?? []).filter((h) => h.status === "active")
 }
 

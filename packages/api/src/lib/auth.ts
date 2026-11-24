@@ -10,7 +10,10 @@ import { forbidden, unauthorized } from "./errors.ts"
 
 const COOKIE = "sid"
 
-export async function startSession(c: Context<AppEnv>, userId: string): Promise<void> {
+export async function startSession(
+  c: Context<AppEnv>,
+  userId: string
+): Promise<void> {
   await setSignedCookie(c, COOKIE, userId, config.sessionSecret, {
     httpOnly: true,
     sameSite: "Lax",
@@ -33,11 +36,21 @@ export function loadSessionUser(db: DB, userId: string): SessionUser | null {
     .where(eq(roleAssignments.userId, u.id))
     .all()
   const denied = db
-    .select({ permission: permissionDenials.permission, studioId: permissionDenials.studioId })
+    .select({
+      permission: permissionDenials.permission,
+      studioId: permissionDenials.studioId,
+    })
     .from(permissionDenials)
     .where(eq(permissionDenials.userId, u.id))
     .all()
-  return { id: u.id, email: u.email, displayName: u.displayName, affiliation: u.affiliation, roles, denied }
+  return {
+    id: u.id,
+    email: u.email,
+    displayName: u.displayName,
+    affiliation: u.affiliation,
+    roles,
+    denied,
+  }
 }
 
 /** Resolves the session cookie into c.var.user (null when signed out). */
@@ -54,7 +67,11 @@ export function requireUser(c: Context<AppEnv>): SessionUser {
 }
 
 /** Server-side permission check (BR-001-12). Throws 401/403. */
-export function authorize(c: Context<AppEnv>, perm: Permission, ctx?: PermissionContext): SessionUser {
+export function authorize(
+  c: Context<AppEnv>,
+  perm: Permission,
+  ctx?: PermissionContext
+): SessionUser {
   const u = requireUser(c)
   if (!can(u, perm, ctx)) throw forbidden()
   return u

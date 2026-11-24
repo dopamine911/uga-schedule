@@ -15,11 +15,21 @@ export const routes = new Hono<AppEnv>()
     await next()
   })
   .get("/clock", (c) => c.json({ now: now(), offsetMs: clockOffsetMs() }))
-  .post("/clock", v("json", z.object({ advanceMinutes: z.number().int().optional(), reset: z.boolean().optional() })), (c) => {
-    const body = c.req.valid("json")
-    if (body.reset) resetClock()
-    if (body.advanceMinutes) advanceClock(body.advanceMinutes * 60_000)
-    const ran = runJobs(c.var.db)
-    return c.json({ now: now(), offsetMs: clockOffsetMs(), ran })
-  })
+  .post(
+    "/clock",
+    v(
+      "json",
+      z.object({
+        advanceMinutes: z.number().int().optional(),
+        reset: z.boolean().optional(),
+      })
+    ),
+    (c) => {
+      const body = c.req.valid("json")
+      if (body.reset) resetClock()
+      if (body.advanceMinutes) advanceClock(body.advanceMinutes * 60_000)
+      const ran = runJobs(c.var.db)
+      return c.json({ now: now(), offsetMs: clockOffsetMs(), ran })
+    }
+  )
   .post("/run-jobs", (c) => c.json({ now: now(), ran: runJobs(c.var.db) }))

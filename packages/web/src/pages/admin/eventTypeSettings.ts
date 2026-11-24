@@ -42,7 +42,10 @@ export function settingsFormFromType(type: EventTypeDetail): SettingsForm {
 }
 
 /** The PATCH body for the form values. */
-export function settingsPayload(v: SettingsForm, confirmRunningEvents: boolean) {
+export function settingsPayload(
+  v: SettingsForm,
+  confirmRunningEvents: boolean
+) {
   const status: "active" | "inactive" = v.active ? "active" : "inactive"
   return {
     name: v.name.trim(),
@@ -64,7 +67,11 @@ export function settingsPayload(v: SettingsForm, confirmRunningEvents: boolean) 
 
 /** Whole number (no decimals) of at least `min`; blank is never valid. */
 export function whole(value: string, min: number): boolean {
-  return value.trim() !== "" && Number.isInteger(Number(value)) && Number(value) >= min
+  return (
+    value.trim() !== "" &&
+    Number.isInteger(Number(value)) &&
+    Number(value) >= min
+  )
 }
 
 /** Names the save-blocking rules; inlining would put them back into the card. */

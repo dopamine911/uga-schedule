@@ -142,7 +142,10 @@ function DayColumn({
   blackoutSegs: Seg[]
 }) {
   return (
-    <div className="relative border-l bg-muted/50" style={{ height: geo.height }}>
+    <div
+      className="relative border-l bg-muted/50"
+      style={{ height: geo.height }}
+    >
       {geo.hours.map((h) => (
         <div
           key={h}
@@ -189,7 +192,10 @@ function BusyBlock({ seg, geo }: { seg: BusySeg; geo: Geometry }) {
   const className = seg.turnaround
     ? "bg-muted text-muted-foreground border-border absolute inset-x-0 overflow-hidden rounded-sm border border-dashed px-1 text-xs"
     : "bg-primary text-primary-foreground absolute inset-x-0 overflow-hidden rounded-sm px-1 text-xs"
-  const style = { top: geo.top(seg.start), height: geo.size(seg.start, seg.end) }
+  const style = {
+    top: geo.top(seg.start),
+    height: geo.size(seg.start, seg.end),
+  }
   const aria = `${seg.label}, ${geo.span(seg.start, seg.end)}`
   if (seg.eventId)
     return (

@@ -78,9 +78,14 @@ export function canViewEvent(db: DB, user: SessionUser, ev: EventRow): boolean {
   if (ev.state === "Draft")
     return (
       ev.requesterId === user.id ||
-      (hasUnscoped(user, "event.view") && !deniedStudios(user, "event.view").includes(ev.studioId))
+      (hasUnscoped(user, "event.view") &&
+        !deniedStudios(user, "event.view").includes(ev.studioId))
     )
-  return can(user, "event.view", eventAccess(user, ev, participantIds(db, ev.id)))
+  return can(
+    user,
+    "event.view",
+    eventAccess(user, ev, participantIds(db, ev.id))
+  )
 }
 
 /** Loads an event the caller may see; 404 otherwise so existence is not leaked. */
@@ -91,7 +96,12 @@ export function visibleEvent(db: DB, user: SessionUser, id: string): EventRow {
 }
 
 /** Action permission on a visible record (403 when the caller sees it but may not act). */
-export function allowed(user: SessionUser, perm: Permission, studioId: string | null, own = false): boolean {
+export function allowed(
+  user: SessionUser,
+  perm: Permission,
+  studioId: string | null,
+  own = false
+): boolean {
   return can(user, perm, { own, studioId })
 }
 
@@ -106,17 +116,33 @@ export function getEvent(db: DB, id: string): EventRow | undefined {
 // ── Days, times ──────────────────────────────────────────────────────
 
 export function daysOf(db: DB, eventId: string) {
-  return db.select().from(eventDays).where(eq(eventDays.eventId, eventId)).orderBy(asc(eventDays.day)).all()
+  return db
+    .select()
+    .from(eventDays)
+    .where(eq(eventDays.eventId, eventId))
+    .orderBy(asc(eventDays.day))
+    .all()
 }
 
-export function eventSpan(db: DB, eventId: string): { start: string; end: string; firstEnd: string } | null {
+export function eventSpan(
+  db: DB,
+  eventId: string
+): { start: string; end: string; firstEnd: string } | null {
   const d = daysOf(db, eventId)
   if (d.length === 0) return null
-  return { start: d[0]!.startsAt, end: d[d.length - 1]!.endsAt, firstEnd: d[0]!.endsAt }
+  return {
+    start: d[0]!.startsAt,
+    end: d[d.length - 1]!.endsAt,
+    firstEnd: d[0]!.endsAt,
+  }
 }
 
 export function typeOf(db: DB, eventTypeId: string) {
-  const t = db.select().from(eventTypes).where(eq(eventTypes.id, eventTypeId)).get()
+  const t = db
+    .select()
+    .from(eventTypes)
+    .where(eq(eventTypes.id, eventTypeId))
+    .get()
   if (!t) throw new Error(`event type ${eventTypeId} missing`)
   return t
 }
@@ -125,14 +151,20 @@ export function typeOf(db: DB, eventTypeId: string) {
 export function pickupOpensAt(db: DB, ev: EventRow): string | null {
   const span = eventSpan(db, ev.id)
   if (!span) return null
-  return addMinutesIso(span.start, -typeOf(db, ev.eventTypeId).pickupWindowMinutes)
+  return addMinutesIso(
+    span.start,
+    -typeOf(db, ev.eventTypeId).pickupWindowMinutes
+  )
 }
 
 /** Equipment due time: last day end + grace, or the first day's for daily-return types (BR-007-07). */
 export function returnDueAt(db: DB, ev: EventRow): string {
   const span = eventSpan(db, ev.id)!
   const type = typeOf(db, ev.eventTypeId)
-  return addMinutesIso(type.dailyEquipmentReturn ? span.firstEnd : span.end, type.checkinGraceMinutes)
+  return addMinutesIso(
+    type.dailyEquipmentReturn ? span.firstEnd : span.end,
+    type.checkinGraceMinutes
+  )
 }
 
 // ── State machine ────────────────────────────────────────────────────
@@ -146,10 +178,14 @@ export function moveEvent(
   action: EventAction,
   actorId: string | null,
   patch: Partial<typeof events.$inferInsert> = {},
-  reason = "",
+  reason = ""
 ): EventRow {
   const to = nextState(ev.state, action)
-  if (!to) throw conflict("INVALID_TRANSITION", `Cannot ${action.replace("_", " ")} an event that is ${ev.state}.`)
+  if (!to)
+    throw conflict(
+      "INVALID_TRANSITION",
+      `Cannot ${action.replace("_", " ")} an event that is ${ev.state}.`
+    )
   const updated = db
     .update(events)
     .set({ ...patch, state: to, sequence: ev.sequence + 1, updatedAt: now() })
@@ -171,19 +207,33 @@ export function moveEvent(
 /** 409 carrying the full issue list; the code is the first issue's code (hard issues first). */
 export function issuesConflict(issues: readonly Issue[]) {
   const first = issues.find((i) => i.severity === "hard") ?? issues[0]!
-  return conflict(first.code, issues.map((i) => i.message).join(" "), { issues })
+  return conflict(first.code, issues.map((i) => i.message).join(" "), {
+    issues,
+  })
 }
 
 // ── Stages (F-005) ───────────────────────────────────────────────────
 
 /** Fills BR-005-11 placeholders. */
-export function renderMessage(db: DB, ev: EventRow, message: string, taskName = ""): string {
+export function renderMessage(
+  db: DB,
+  ev: EventRow,
+  message: string,
+  taskName = ""
+): string {
   const days = daysOf(db, ev.id)
-  const studio = db.select().from(studios).where(eq(studios.id, ev.studioId)).get()
+  const studio = db
+    .select()
+    .from(studios)
+    .where(eq(studios.id, ev.studioId))
+    .get()
   const lines = db
     .select({ qty: equipmentLines.qty, name: equipmentTypes.name })
     .from(equipmentLines)
-    .innerJoin(equipmentTypes, eq(equipmentTypes.id, equipmentLines.equipmentTypeId))
+    .innerJoin(
+      equipmentTypes,
+      eq(equipmentTypes.id, equipmentLines.equipmentTypeId)
+    )
     .where(eq(equipmentLines.eventId, ev.id))
     .all()
     .filter((l) => l.qty > 0)
@@ -193,8 +243,12 @@ export function renderMessage(db: DB, ev: EventRow, message: string, taskName = 
     "event.title": ev.title,
     "studio.name": studio?.name ?? "",
     "event.first_day": first ? first.day : "",
-    "event.days": days.map((d) => `${d.day} ${d.startTime}–${d.endTime}`).join(", "),
-    "equipment.list": lines.length ? lines.map((l) => `${l.qty} × ${l.name}`).join(", ") : "no equipment",
+    "event.days": days
+      .map((d) => `${d.day} ${d.startTime}–${d.endTime}`)
+      .join(", "),
+    "equipment.list": lines.length
+      ? lines.map((l) => `${l.qty} × ${l.name}`).join(", ")
+      : "no equipment",
     "pickup.window": pickup ? localLabel(pickup) : "",
     "links.event": `${config.publicBaseUrl}/events/${ev.id}`,
     "task.name": taskName,
@@ -203,8 +257,13 @@ export function renderMessage(db: DB, ev: EventRow, message: string, taskName = 
 }
 
 /** Audience of a stage: the assignee for tasks, otherwise its recipients (F-005 §2). */
-export function stageAudience(db: DB, eventId: string, s: Pick<StageRow, "kind" | "recipients" | "assigneeRole">): string[] {
-  const who: StageRecipient[] = s.kind === "task" && s.assigneeRole ? [s.assigneeRole] : s.recipients
+export function stageAudience(
+  db: DB,
+  eventId: string,
+  s: Pick<StageRow, "kind" | "recipients" | "assigneeRole">
+): string[] {
+  const who: StageRecipient[] =
+    s.kind === "task" && s.assigneeRole ? [s.assigneeRole] : s.recipients
   return eventAudience(db, eventId, who)
 }
 
@@ -216,18 +275,45 @@ export function planEventStages(db: DB, ev: EventRow): StageRow[] {
   const templates = db
     .select()
     .from(stageTemplates)
-    .where(and(eq(stageTemplates.eventTypeId, ev.eventTypeId), eq(stageTemplates.archived, false)))
+    .where(
+      and(
+        eq(stageTemplates.eventTypeId, ev.eventTypeId),
+        eq(stageTemplates.archived, false)
+      )
+    )
     .all()
-  const days = daysOf(db, ev.id).map((d) => ({ start: d.startsAt, end: d.endsAt }))
-  const existing = db.select().from(stageInstances).where(eq(stageInstances.eventId, ev.id)).all()
-  const kept = existing.filter((s) => s.status === "done" || s.status === "overridden" || s.status === "sent")
+  const days = daysOf(db, ev.id).map((d) => ({
+    start: d.startsAt,
+    end: d.endsAt,
+  }))
+  const existing = db
+    .select()
+    .from(stageInstances)
+    .where(eq(stageInstances.eventId, ev.id))
+    .all()
+  const kept = existing.filter(
+    (s) =>
+      s.status === "done" || s.status === "overridden" || s.status === "sent"
+  )
   const replaced = existing.filter((s) => !kept.includes(s)).map((s) => s.id)
-  if (replaced.length) db.delete(stageInstances).where(inArray(stageInstances.id, replaced)).run()
+  if (replaced.length)
+    db.delete(stageInstances).where(inArray(stageInstances.id, replaced)).run()
 
-  const planned = planStages(templates, days, now(), config.tz, config.quietHours)
+  const planned = planStages(
+    templates,
+    days,
+    now(),
+    config.tz,
+    config.quietHours
+  )
   const opened: StageRow[] = []
   for (const p of planned) {
-    if (kept.some((k) => k.stageTemplateId === p.templateId && k.dayIndex === p.dayIndex)) continue
+    if (
+      kept.some(
+        (k) => k.stageTemplateId === p.templateId && k.dayIndex === p.dayIndex
+      )
+    )
+      continue
     const tpl = templates.find((t) => t.id === p.templateId)!
     const row = db
       .insert(stageInstances)
@@ -252,7 +338,11 @@ export function planEventStages(db: DB, ev: EventRow): StageRow[] {
 }
 
 /** Notifies assignees of newly opened tasks (F-005 §4). */
-export function notifyTasksOpened(db: DB, ev: EventRow, opened: readonly StageRow[]): void {
+export function notifyTasksOpened(
+  db: DB,
+  ev: EventRow,
+  opened: readonly StageRow[]
+): void {
   for (const s of opened) {
     notify(db, {
       code: "TASK_OPENED",
@@ -269,7 +359,12 @@ export function notifyTasksOpened(db: DB, ev: EventRow, opened: readonly StageRo
 export function cancelOpenStages(db: DB, eventId: string): void {
   db.update(stageInstances)
     .set({ status: "cancelled" })
-    .where(and(eq(stageInstances.eventId, eventId), inArray(stageInstances.status, ["scheduled", "open", "overdue"])))
+    .where(
+      and(
+        eq(stageInstances.eventId, eventId),
+        inArray(stageInstances.status, ["scheduled", "open", "overdue"])
+      )
+    )
     .run()
 }
 
@@ -278,13 +373,22 @@ export function cancelScheduledReminders(db: DB, eventId: string): void {
   db.update(stageInstances)
     .set({ status: "cancelled" })
     .where(
-      and(eq(stageInstances.eventId, eventId), eq(stageInstances.kind, "reminder"), eq(stageInstances.status, "scheduled")),
+      and(
+        eq(stageInstances.eventId, eventId),
+        eq(stageInstances.kind, "reminder"),
+        eq(stageInstances.status, "scheduled")
+      )
     )
     .run()
 }
 
 export function stagesOf(db: DB, eventId: string): StageRow[] {
-  return db.select().from(stageInstances).where(eq(stageInstances.eventId, eventId)).orderBy(asc(stageInstances.dueAt)).all()
+  return db
+    .select()
+    .from(stageInstances)
+    .where(eq(stageInstances.eventId, eventId))
+    .orderBy(asc(stageInstances.dueAt))
+    .all()
 }
 
 // ── Equipment movements (F-003) ──────────────────────────────────────
@@ -295,11 +399,23 @@ export function setUnitStatus(
   to: UnitStatus,
   actorId: string | null,
   eventId: string | null,
-  reason: string,
+  reason: string
 ): void {
-  db.update(equipmentUnits).set({ status: to }).where(eq(equipmentUnits.id, unit.id)).run()
+  db.update(equipmentUnits)
+    .set({ status: to })
+    .where(eq(equipmentUnits.id, unit.id))
+    .run()
   db.insert(statusHistory)
-    .values({ unitId: unit.id, typeId: unit.typeId, fromStatus: unit.status, toStatus: to, qty: 1, actorId, eventId, reason })
+    .values({
+      unitId: unit.id,
+      typeId: unit.typeId,
+      fromStatus: unit.status,
+      toStatus: to,
+      qty: 1,
+      actorId,
+      eventId,
+      reason,
+    })
     .run()
 }
 
@@ -319,29 +435,47 @@ export function moveBulk(
   qty: number,
   actorId: string | null,
   eventId: string | null,
-  reason: string,
+  reason: string
 ): void {
   if (qty <= 0) return
-  const s = db.select().from(bulkStock).where(eq(bulkStock.typeId, typeId)).get()
+  const s = db
+    .select()
+    .from(bulkStock)
+    .where(eq(bulkStock.typeId, typeId))
+    .get()
   if (!s) throw new Error(`bulk stock for ${typeId} missing`)
   db.update(bulkStock)
     .set({ [from]: s[from] - qty, [to]: s[to] + qty })
     .where(eq(bulkStock.typeId, typeId))
     .run()
   db.insert(statusHistory)
-    .values({ typeId, fromStatus: BUCKET_STATUS[from], toStatus: BUCKET_STATUS[to], qty, actorId, eventId, reason })
+    .values({
+      typeId,
+      fromStatus: BUCKET_STATUS[from],
+      toStatus: BUCKET_STATUS[to],
+      qty,
+      actorId,
+      eventId,
+      reason,
+    })
     .run()
 }
 
 // ── Check-in state (F-007) ───────────────────────────────────────────
 
 /** Quantity of a record still physically out: not returned (ok/damaged) and not written off as lost. */
-export function outstandingQty(r: Pick<RecordRow, "qty" | "qtyOk" | "qtyDamaged" | "qtyLost">): number {
+export function outstandingQty(
+  r: Pick<RecordRow, "qty" | "qtyOk" | "qtyDamaged" | "qtyLost">
+): number {
   return Math.max(0, r.qty - r.qtyOk - r.qtyDamaged - r.qtyLost)
 }
 
 export function recordsOf(db: DB, eventId: string): RecordRow[] {
-  return db.select().from(checkoutRecords).where(eq(checkoutRecords.eventId, eventId)).all()
+  return db
+    .select()
+    .from(checkoutRecords)
+    .where(eq(checkoutRecords.eventId, eventId))
+    .all()
 }
 
 /** Check-in is complete when every record is fully accounted for (BR-007-14). */
@@ -375,11 +509,24 @@ export interface CheckinReport {
 }
 
 export function buildCheckinReport(db: DB, eventId: string): CheckinReport {
-  const names = new Map(db.select({ id: users.id, n: users.displayName }).from(users).all().map((u) => [u.id, u.n]))
+  const names = new Map(
+    db
+      .select({ id: users.id, n: users.displayName })
+      .from(users)
+      .all()
+      .map((u) => [u.id, u.n])
+  )
   const rows = db
-    .select({ r: checkoutRecords, typeName: equipmentTypes.name, assetTag: equipmentUnits.assetTag })
+    .select({
+      r: checkoutRecords,
+      typeName: equipmentTypes.name,
+      assetTag: equipmentUnits.assetTag,
+    })
     .from(checkoutRecords)
-    .innerJoin(equipmentTypes, eq(equipmentTypes.id, checkoutRecords.equipmentTypeId))
+    .innerJoin(
+      equipmentTypes,
+      eq(equipmentTypes.id, checkoutRecords.equipmentTypeId)
+    )
     .leftJoin(equipmentUnits, eq(equipmentUnits.id, checkoutRecords.unitId))
     .where(eq(checkoutRecords.eventId, eventId))
     .all()
@@ -409,7 +556,11 @@ export function buildCheckinReport(db: DB, eventId: string): CheckinReport {
       .from(holds)
       .where(eq(holds.eventId, eventId))
       .all()
-      .map((h) => ({ reason: h.reason, status: h.status, placedAt: h.createdAt })),
+      .map((h) => ({
+        reason: h.reason,
+        status: h.status,
+        placedAt: h.createdAt,
+      })),
   }
 }
 
@@ -429,18 +580,32 @@ export function placeHold(
     note: string
     autoClearAt?: string | null
     actorId: string | null
-  },
+  }
 ): HoldRow | null {
   if (h.eventId && h.reason !== "MANUAL") {
     const existing = db
       .select()
       .from(holds)
-      .where(and(eq(holds.userId, h.userId), eq(holds.eventId, h.eventId), eq(holds.reason, h.reason), eq(holds.status, "active")))
+      .where(
+        and(
+          eq(holds.userId, h.userId),
+          eq(holds.eventId, h.eventId),
+          eq(holds.reason, h.reason),
+          eq(holds.status, "active")
+        )
+      )
       .get()
     if (existing) {
       // LATE_RETURN clears N days after the last late item comes back: extend, never shorten.
-      if (existing.status === "active" && h.autoClearAt && (!existing.autoClearAt || existing.autoClearAt < h.autoClearAt))
-        db.update(holds).set({ autoClearAt: h.autoClearAt }).where(eq(holds.id, existing.id)).run()
+      if (
+        existing.status === "active" &&
+        h.autoClearAt &&
+        (!existing.autoClearAt || existing.autoClearAt < h.autoClearAt)
+      )
+        db.update(holds)
+          .set({ autoClearAt: h.autoClearAt })
+          .where(eq(holds.id, existing.id))
+          .run()
       return null
     }
   }
@@ -456,7 +621,14 @@ export function placeHold(
     })
     .returning()
     .get()
-  audit(db, { actorId: h.actorId, action: "hold.place", entityType: "hold", entityId: row.id, after: row, reason: h.note })
+  audit(db, {
+    actorId: h.actorId,
+    action: "hold.place",
+    entityType: "hold",
+    entityId: row.id,
+    after: row,
+    reason: h.note,
+  })
   recheckEvents(db, { requesterId: h.userId })
   const ev = h.eventId ? getEvent(db, h.eventId) : undefined
   notify(db, {
@@ -471,10 +643,20 @@ export function placeHold(
 }
 
 /** Clears a hold. Drops HOLD_ACTIVE review flags once none remain (BR-007-11) and tells the student (BR-007-12). */
-export function clearHold(db: DB, hold: HoldRow, actorId: string | null, reason: string): void {
+export function clearHold(
+  db: DB,
+  hold: HoldRow,
+  actorId: string | null,
+  reason: string
+): void {
   const at = now()
   db.update(holds)
-    .set({ status: "cleared", clearedBy: actorId, clearedReason: reason, clearedAt: at })
+    .set({
+      status: "cleared",
+      clearedBy: actorId,
+      clearedReason: reason,
+      clearedAt: at,
+    })
     .where(eq(holds.id, hold.id))
     .run()
   audit(db, {
@@ -492,11 +674,19 @@ export function clearHold(db: DB, hold: HoldRow, actorId: string | null, reason:
     .where(and(eq(holds.userId, hold.userId), eq(holds.status, "active")))
     .get()
   if (!remaining) {
-    for (const ev of db.select().from(events).where(eq(events.requesterId, hold.userId)).all()) {
+    for (const ev of db
+      .select()
+      .from(events)
+      .where(eq(events.requesterId, hold.userId))
+      .all()) {
       if (!ev.reviewReasons.includes("HOLD_ACTIVE")) continue
       const reasons = ev.reviewReasons.filter((r) => r !== "HOLD_ACTIVE")
       db.update(events)
-        .set({ reviewReasons: reasons, needsReview: reasons.length > 0, updatedAt: at })
+        .set({
+          reviewReasons: reasons,
+          needsReview: reasons.length > 0,
+          updatedAt: at,
+        })
         .where(eq(events.id, ev.id))
         .run()
     }
@@ -514,7 +704,11 @@ export function clearHold(db: DB, hold: HoldRow, actorId: string | null, reason:
 // ── Post-event (F-008) ───────────────────────────────────────────────
 
 export function packageOf(db: DB, eventId: string): PackageRow | undefined {
-  return db.select().from(resultPackages).where(eq(resultPackages.eventId, eventId)).get()
+  return db
+    .select()
+    .from(resultPackages)
+    .where(eq(resultPackages.eventId, eventId))
+    .get()
 }
 
 /** BR-008-01: exactly one package per event, created when the event enters PostEvent. */
@@ -528,14 +722,22 @@ export function ensurePackage(db: DB, ev: EventRow): PackageRow {
     .values({
       eventId: ev.id,
       sponsorSignoff: type.requiresSponsorSignoff ? "pending" : "not_required",
-      resultsDueAt: span && type.requiresResults ? addDaysIso(span.end, type.resultsDueDays) : null,
+      resultsDueAt:
+        span && type.requiresResults
+          ? addDaysIso(span.end, type.resultsDueDays)
+          : null,
     })
     .returning()
     .get()
 }
 
 /** Publishes a package, notifies the audience and closes the event once check-in is complete (BR-008-08). */
-export function publishPackage(db: DB, pkg: PackageRow, actorId: string | null, overrideReason: string | null): void {
+export function publishPackage(
+  db: DB,
+  pkg: PackageRow,
+  actorId: string | null,
+  overrideReason: string | null
+): void {
   const at = now()
   const p = getPolicies(db)
   db.update(resultPackages)
@@ -554,7 +756,9 @@ export function publishPackage(db: DB, pkg: PackageRow, actorId: string | null, 
     entityType: "result_package",
     entityId: pkg.id,
     after: { status: "published" },
-    reason: overrideReason ?? (actorId ? "" : "published automatically: no post-event steps required"),
+    reason:
+      overrideReason ??
+      (actorId ? "" : "published automatically: no post-event steps required"),
   })
   const ev = getEvent(db, pkg.eventId)
   if (!ev) return
@@ -566,14 +770,19 @@ export function publishPackage(db: DB, pkg: PackageRow, actorId: string | null, 
     body: `${config.publicBaseUrl}/results/${ev.id}`,
     key: `RESULTS_AVAILABLE:${pkg.id}`,
   })
-  if (ev.state === "PostEvent" && checkinComplete(db, ev.id)) moveEvent(db, ev, "close", actorId)
+  if (ev.state === "PostEvent" && checkinComplete(db, ev.id))
+    moveEvent(db, ev, "close", actorId)
 }
 
 /**
  * Advances a PostEvent event (F-008 §3): once check-in is complete, attaches the check-in report, auto-publishes when no
  * later step is required, and closes the event when its package is published.
  */
-export function advancePostEvent(db: DB, eventId: string, actorId: string | null): void {
+export function advancePostEvent(
+  db: DB,
+  eventId: string,
+  actorId: string | null
+): void {
   const ev = getEvent(db, eventId)
   if (!ev || ev.state !== "PostEvent") return
   const pkg = ensurePackage(db, ev)
@@ -586,7 +795,8 @@ export function advancePostEvent(db: DB, eventId: string, actorId: string | null
   const latest = packageOf(db, ev.id)!
   if (latest.status === "collecting") {
     const type = typeOf(db, ev.eventTypeId)
-    if (!type.requiresResults && !type.requiresSponsorSignoff) publishPackage(db, latest, actorId, null)
+    if (!type.requiresResults && !type.requiresSponsorSignoff)
+      publishPackage(db, latest, actorId, null)
     return
   }
   if (latest.status === "published") moveEvent(db, ev, "close", actorId)
@@ -598,7 +808,12 @@ export function deletePackageFiles(packageId: string): void {
 }
 
 export function itemsOf(db: DB, packageId: string) {
-  return db.select().from(resultItems).where(eq(resultItems.packageId, packageId)).orderBy(asc(resultItems.uploadedAt)).all()
+  return db
+    .select()
+    .from(resultItems)
+    .where(eq(resultItems.packageId, packageId))
+    .orderBy(asc(resultItems.uploadedAt))
+    .all()
 }
 
 // ── Next action (BR-006-16) ──────────────────────────────────────────
@@ -614,7 +829,10 @@ export function nextActionFor(db: DB, ev: EventRow): string | null {
     case "Confirmed": {
       if (ev.needsReview) return "Waiting for studio staff to review"
       const task = stagesOf(db, ev.id).find(
-        (s) => s.kind === "task" && (s.status === "open" || s.status === "overdue") && s.assigneeRole === "requester",
+        (s) =>
+          s.kind === "task" &&
+          (s.status === "open" || s.status === "overdue") &&
+          s.assigneeRole === "requester"
       )
       if (task) return `Complete: ${task.name}`
       const pickup = pickupOpensAt(db, ev)
@@ -623,12 +841,18 @@ export function nextActionFor(db: DB, ev: EventRow): string | null {
     case "InProgress":
     case "PostEvent": {
       const out = recordsOf(db, ev.id).filter((r) => outstandingQty(r) > 0)
-      if (out.length) return `Return equipment by ${localLabel(out.map((r) => r.dueAt).sort()[0]!)}`
+      if (out.length)
+        return `Return equipment by ${localLabel(out.map((r) => r.dueAt).sort()[0]!)}`
       if (ev.state === "InProgress") return "Event in progress"
       const pkg = packageOf(db, ev.id)
       if (!pkg) return null
-      if (typeOf(db, ev.eventTypeId).requiresResults && itemsOf(db, pkg.id).length === 0) return "Upload results"
-      if (pkg.sponsorSignoff === "pending") return "Waiting for sponsor sign-off"
+      if (
+        typeOf(db, ev.eventTypeId).requiresResults &&
+        itemsOf(db, pkg.id).length === 0
+      )
+        return "Upload results"
+      if (pkg.sponsorSignoff === "pending")
+        return "Waiting for sponsor sign-off"
       return "Waiting for studio staff to publish results"
     }
     default:
@@ -642,9 +866,10 @@ export function nextActionFor(db: DB, ev: EventRow): string | null {
 export function canCompleteStage(
   user: SessionUser,
   ev: Pick<EventRow, "studioId" | "requesterId" | "sponsorId">,
-  s: Pick<StageRow, "kind" | "status" | "assigneeRole">,
+  s: Pick<StageRow, "kind" | "status" | "assigneeRole">
 ): boolean {
-  if (s.kind !== "task" || (s.status !== "open" && s.status !== "overdue")) return false
+  if (s.kind !== "task" || (s.status !== "open" && s.status !== "overdue"))
+    return false
   if (allowed(user, "stage.complete_task", ev.studioId)) return true
   if (s.assigneeRole === "requester") return ev.requesterId === user.id
   if (s.assigneeRole === "sponsor") return ev.sponsorId === user.id

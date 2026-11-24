@@ -9,7 +9,10 @@ import {
   PageHeader,
   QueryView,
 } from "@/components/common"
-import { StageEditor, StudioCheckboxes } from "@/components/admin/EventTypeParts"
+import {
+  StageEditor,
+  StudioCheckboxes,
+} from "@/components/admin/EventTypeParts"
 import {
   type StageDraft,
   draftToPayload,

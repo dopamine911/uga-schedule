@@ -8,10 +8,22 @@ const DAY_FORMAT = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
   timeZone: "UTC",
 })
-const TIME_FORMAT = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" })
-const WEEKDAY_FORMAT = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" })
-const MONTH_FORMAT = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" })
-const RELATIVE_FORMAT = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" })
+const TIME_FORMAT = new Intl.DateTimeFormat("en-US", {
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "UTC",
+})
+const WEEKDAY_FORMAT = new Intl.DateTimeFormat("en-US", {
+  weekday: "short",
+  timeZone: "UTC",
+})
+const MONTH_FORMAT = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  timeZone: "UTC",
+})
+const RELATIVE_FORMAT = new Intl.RelativeTimeFormat("en-US", {
+  numeric: "auto",
+})
 
 const noonUtc = (day: string) => new Date(`${day}T12:00:00Z`)
 
@@ -49,10 +61,13 @@ export function fmtInstant(iso: string, tz: string): string {
 }
 
 /** Event days summary: "Tue, Apr 6, 2027 · 2:00 PM–4:00 PM" or "Apr 10 – Apr 12 (3 days)". */
-export function fmtDays(days: readonly { day: string; startTime: string; endTime: string }[]): string {
+export function fmtDays(
+  days: readonly { day: string; startTime: string; endTime: string }[]
+): string {
   if (days.length === 0) return "No days"
   const first = days[0]!
-  if (days.length === 1) return `${fmtDay(first.day)} · ${fmtTime(first.startTime)}–${fmtTime(first.endTime)}`
+  if (days.length === 1)
+    return `${fmtDay(first.day)} · ${fmtTime(first.startTime)}–${fmtTime(first.endTime)}`
   const last = days[days.length - 1]!
   return `${fmtDay(first.day)} – ${fmtDay(last.day)} (${days.length} days)`
 }
@@ -82,7 +97,10 @@ const HONORIFIC = /^(?:(?:Prof|Dr|Mrs|Mr|Ms)\.?\s+)+/i
 /** "Prof. Priya Patel" → "PP". */
 export function initials(name: string): string {
   const parts = name.replace(HONORIFIC, "").split(/\s+/).filter(Boolean)
-  return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? "") : "")).toUpperCase()
+  return (
+    (parts[0]?.[0] ?? "") +
+    (parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? "") : "")
+  ).toUpperCase()
 }
 
 /** "Prof. Priya Patel" → "Priya" (honorifics are skipped). */
@@ -92,7 +110,11 @@ export function firstName(name: string): string {
 
 /** "2:00 PM" for a UTC ISO instant, shown in the campus zone. */
 export function fmtClock(iso: string, tz: string): string {
-  return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: tz }).format(new Date(iso))
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: tz,
+  }).format(new Date(iso))
 }
 
 /** "Mon 23" for a "YYYY-MM-DD" calendar date (compact column header). */

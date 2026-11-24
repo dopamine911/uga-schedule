@@ -14,7 +14,9 @@ export function openDb(file = config.dbFile): DB {
   sqlite.pragma("journal_mode = WAL")
   sqlite.pragma("foreign_keys = ON")
   const db = drizzle(sqlite, { schema })
-  migrate(db, { migrationsFolder: resolve(import.meta.dirname, "../../drizzle") })
+  migrate(db, {
+    migrationsFolder: resolve(import.meta.dirname, "../../drizzle"),
+  })
   return db
 }
 

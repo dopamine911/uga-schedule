@@ -3,13 +3,18 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api, unwrap } from "@/lib/api"
 
 export function useMe() {
-  return useQuery({ queryKey: ["me"], queryFn: () => unwrap(api.auth.me.$get()), staleTime: 60_000 })
+  return useQuery({
+    queryKey: ["me"],
+    queryFn: () => unwrap(api.auth.me.$get()),
+    staleTime: 60_000,
+  })
 }
 
 /** The signed-in user. Only use below <RequireAuth>, where the user is guaranteed. */
 export function useUser() {
   const { data } = useMe()
-  if (!data?.user) throw new Error("useUser() used outside an authenticated route")
+  if (!data?.user)
+    throw new Error("useUser() used outside an authenticated route")
   return data.user
 }
 

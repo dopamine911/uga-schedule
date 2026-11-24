@@ -6,7 +6,11 @@ import { audit } from "../lib/audit.ts"
 import { authorize, requireUser } from "../lib/auth.ts"
 import { badRequest } from "../lib/errors.ts"
 import { v } from "../lib/validate.ts"
-import { POLICY_DEFAULTS, type PolicyKey, getPolicies } from "../services/policy.ts"
+import {
+  POLICY_DEFAULTS,
+  type PolicyKey,
+  getPolicies,
+} from "../services/policy.ts"
 
 // BR-006-05: admin-configurable policy numbers.
 
@@ -21,8 +25,11 @@ export const routes = new Hono<AppEnv>()
     const me = authorize(c, "policy.manage")
     const db = c.var.db
     const body = c.req.valid("json")
-    const unknown = Object.keys(body).filter((k) => !KEYS.includes(k as PolicyKey))
-    if (unknown.length) throw badRequest("UNKNOWN_POLICY", "Unknown policy.", { keys: unknown })
+    const unknown = Object.keys(body).filter(
+      (k) => !KEYS.includes(k as PolicyKey)
+    )
+    if (unknown.length)
+      throw badRequest("UNKNOWN_POLICY", "Unknown policy.", { keys: unknown })
     const before = getPolicies(db)
     db.transaction(() => {
       for (const key of Object.keys(body) as PolicyKey[]) {

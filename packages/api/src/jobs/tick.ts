@@ -1,4 +1,9 @@
-import { type GrantLike, REVIEWABLE, firstUncoveredDay, utcToLocal } from "@studio/domain"
+import {
+  type GrantLike,
+  REVIEWABLE,
+  firstUncoveredDay,
+  utcToLocal,
+} from "@studio/domain"
 import { and, eq, inArray, isNotNull, lt, lte } from "drizzle-orm"
 import { config } from "../config.ts"
 import type { DB } from "../db/client.ts"
@@ -56,12 +61,26 @@ const STAGE_STATES: readonly EventRow["state"][] = ["Confirmed", "InProgress"]
 /** Notifies recipients who have not yet received this notification key (notify itself is idempotent per key). */
 function notifyOnce(
   db: DB,
-  n: { code: string; to: readonly string[]; eventId: string | null; subject: string; body: string; key: string },
+  n: {
+    code: string
+    to: readonly string[]
+    eventId: string | null
+    subject: string
+    body: string
+    key: string
+  }
 ): number {
   let sent = 0
   for (const to of new Set(n.to)) {
     const dedupeKey = `${n.key}:${to}`
-    if (db.select({ id: notifications.id }).from(notifications).where(eq(notifications.dedupeKey, dedupeKey)).get()) continue
+    if (
+      db
+        .select({ id: notifications.id })
+        .from(notifications)
+        .where(eq(notifications.dedupeKey, dedupeKey))
+        .get()
+    )
+      continue
     notify(db, { ...n, to: [to] })
     sent++
   }
@@ -78,7 +97,13 @@ function sendDueReminders(db: DB, at: string): number {
   const due = db
     .select()
     .from(stageInstances)
-    .where(and(eq(stageInstances.status, "scheduled"), eq(stageInstances.kind, "reminder"), lte(stageInstances.dueAt, at)))
+    .where(
+      and(
+        eq(stageInstances.status, "scheduled"),
+        eq(stageInstances.kind, "reminder"),
+        lte(stageInstances.dueAt, at)
+      )
+    )
     .all()
   let sent = 0
   const nowMs = Date.parse(at)
@@ -86,10 +111,16 @@ function sendDueReminders(db: DB, at: string): number {
     const ev = getEvent(db, s.eventId)
     if (!ev || !STAGE_STATES.includes(ev.state)) continue
     if (nowMs - Date.parse(s.dueAt) > REMINDER_STALE_MS) {
-      db.update(stageInstances).set({ status: "skipped" }).where(eq(stageInstances.id, s.id)).run()
+      db.update(stageInstances)
+        .set({ status: "skipped" })
+        .where(eq(stageInstances.id, s.id))
+        .run()
       continue
     }
-    db.update(stageInstances).set({ status: "sent" }).where(eq(stageInstances.id, s.id)).run()
+    db.update(stageInstances)
+      .set({ status: "sent" })
+      .where(eq(stageInstances.id, s.id))
+      .run()
     notify(db, {
       code: "STAGE_REMINDER",
       to: stageAudience(db, s.eventId, s),
@@ -107,13 +138,22 @@ function markOverdueTasks(db: DB, at: string): number {
   const late = db
     .select()
     .from(stageInstances)
-    .where(and(eq(stageInstances.status, "open"), eq(stageInstances.kind, "task"), lte(stageInstances.dueAt, at)))
+    .where(
+      and(
+        eq(stageInstances.status, "open"),
+        eq(stageInstances.kind, "task"),
+        lte(stageInstances.dueAt, at)
+      )
+    )
     .all()
   let marked = 0
   for (const s of late) {
     const ev = getEvent(db, s.eventId)
     if (!ev || !STAGE_STATES.includes(ev.state)) continue
-    db.update(stageInstances).set({ status: "overdue" }).where(eq(stageInstances.id, s.id)).run()
+    db.update(stageInstances)
+      .set({ status: "overdue" })
+      .where(eq(stageInstances.id, s.id))
+      .run()
     marked++
     notify(db, {
       code: "TASK_DUE",
@@ -133,17 +173,32 @@ function expireDecisions(db: DB, at: string): number {
   const p = getPolicies(db)
   const nowMs = Date.parse(at)
   let expired = 0
-  for (const ev of db.select().from(events).where(inArray(events.state, ["Submitted", "SponsorApproved"])).all()) {
+  for (const ev of db
+    .select()
+    .from(events)
+    .where(inArray(events.state, ["Submitted", "SponsorApproved"]))
+    .all()) {
     const start = dayStartOf(db, ev)
-    const cutoffPassed = start !== null && nowMs >= Date.parse(start) - p.DECISION_CUTOFF_HOURS * HOUR_MS
+    const cutoffPassed =
+      start !== null &&
+      nowMs >= Date.parse(start) - p.DECISION_CUTOFF_HOURS * HOUR_MS
     const sponsorSlaPassed =
-      ev.state === "Submitted" && ev.submittedAt !== null && nowMs - Date.parse(ev.submittedAt) >= p.SPONSOR_SLA_HOURS * HOUR_MS
+      ev.state === "Submitted" &&
+      ev.submittedAt !== null &&
+      nowMs - Date.parse(ev.submittedAt) >= p.SPONSOR_SLA_HOURS * HOUR_MS
     const staffSlaPassed =
       ev.state === "SponsorApproved" &&
       ev.sponsorDecidedAt !== null &&
       nowMs - Date.parse(ev.sponsorDecidedAt) >= p.STAFF_SLA_HOURS * HOUR_MS
     if (!cutoffPassed && !sponsorSlaPassed && !staffSlaPassed) continue
-    moveEvent(db, ev, "expire", null, {}, cutoffPassed ? "decision cutoff passed" : "decision SLA passed")
+    moveEvent(
+      db,
+      ev,
+      "expire",
+      null,
+      {},
+      cutoffPassed ? "decision cutoff passed" : "decision SLA passed"
+    )
     notify(db, {
       code: "EVENT_EXPIRED",
       to: eventAudience(db, ev.id, ["requester", "sponsor"]),
@@ -163,7 +218,11 @@ function sendDecisionReminders(db: DB, at: string): number {
   const p = getPolicies(db)
   const nowMs = Date.parse(at)
   let sent = 0
-  for (const ev of db.select().from(events).where(inArray(events.state, ["Submitted", "SponsorApproved"])).all()) {
+  for (const ev of db
+    .select()
+    .from(events)
+    .where(inArray(events.state, ["Submitted", "SponsorApproved"]))
+    .all()) {
     const isSponsorStage = ev.state === "Submitted"
     const since = isSponsorStage ? ev.submittedAt : ev.sponsorDecidedAt
     const slaHours = isSponsorStage ? p.SPONSOR_SLA_HOURS : p.STAFF_SLA_HOURS
@@ -173,7 +232,11 @@ function sendDecisionReminders(db: DB, at: string): number {
       if (elapsed < (slaHours * HOUR_MS * pct) / 100) continue
       sent += notifyOnce(db, {
         code: isSponsorStage ? "SPONSOR_DECISION_DUE" : "STAFF_DECISION_DUE",
-        to: eventAudience(db, ev.id, isSponsorStage ? ["sponsor"] : ["studio_staff"]),
+        to: eventAudience(
+          db,
+          ev.id,
+          isSponsorStage ? ["sponsor"] : ["studio_staff"]
+        ),
         eventId: ev.id,
         subject: `Decision due: ${ev.title}`,
         body: `This request is ${pct}% of the way to its decision deadline.`,
@@ -190,10 +253,21 @@ function sendDecisionReminders(db: DB, at: string): number {
 /** BR-006-13: a confirmed event not started by the end of its first day is a no-show. */
 function markNoShows(db: DB, at: string): number {
   let count = 0
-  for (const ev of db.select().from(events).where(eq(events.state, "Confirmed")).all()) {
+  for (const ev of db
+    .select()
+    .from(events)
+    .where(eq(events.state, "Confirmed"))
+    .all()) {
     const span = eventSpan(db, ev.id)
     if (!span || span.firstEnd > at) continue
-    moveEvent(db, ev, "no_show", null, {}, "not started by the end of the first day")
+    moveEvent(
+      db,
+      ev,
+      "no_show",
+      null,
+      {},
+      "not started by the end of the first day"
+    )
     cancelOpenStages(db, ev.id)
     count++
   }
@@ -203,7 +277,11 @@ function markNoShows(db: DB, at: string): number {
 /** Events whose last day has ended move to PostEvent (BR-006-15); their package is created here (F-008). */
 function endEvents(db: DB, at: string): number {
   let count = 0
-  for (const ev of db.select().from(events).where(eq(events.state, "InProgress")).all()) {
+  for (const ev of db
+    .select()
+    .from(events)
+    .where(eq(events.state, "InProgress"))
+    .all()) {
     const span = eventSpan(db, ev.id)
     if (!span || span.end > at) continue
     const updated = moveEvent(db, ev, "end", null, {}, "last day ended")
@@ -216,7 +294,11 @@ function endEvents(db: DB, at: string): number {
 /** PostEvent events whose check-in is complete publish and close when no later step is required (F-008 §3). */
 function advanceFinishedEvents(db: DB): number {
   let closed = 0
-  for (const ev of db.select().from(events).where(eq(events.state, "PostEvent")).all()) {
+  for (const ev of db
+    .select()
+    .from(events)
+    .where(eq(events.state, "PostEvent"))
+    .all()) {
     advancePostEvent(db, ev.id, null)
     if (getEvent(db, ev.id)?.state === "Closed") closed++
   }
@@ -259,7 +341,9 @@ function flagOverdueReturns(db: DB, at: string): number {
 
 /** BR-003-07: items still out LOST_AFTER_DAYS after their due time are written off and a LOSS hold is placed. */
 function writeOffLost(db: DB, at: string): number {
-  const cutoff = new Date(Date.parse(at) - getPolicies(db).LOST_AFTER_DAYS * DAY_MS).toISOString()
+  const cutoff = new Date(
+    Date.parse(at) - getPolicies(db).LOST_AFTER_DAYS * DAY_MS
+  ).toISOString()
   const stale = db
     .select()
     .from(checkoutRecords)
@@ -271,14 +355,34 @@ function writeOffLost(db: DB, at: string): number {
     const ev = getEvent(db, r.eventId)
     if (!ev) continue
     const qty = outstandingQty(r)
-    const type = db.select().from(equipmentTypes).where(eq(equipmentTypes.id, r.equipmentTypeId)).get()!
+    const type = db
+      .select()
+      .from(equipmentTypes)
+      .where(eq(equipmentTypes.id, r.equipmentTypeId))
+      .get()!
     if (type.tracking === "serialized") {
-      const unit = db.select().from(equipmentUnits).where(eq(equipmentUnits.id, r.unitId!)).get()!
+      const unit = db
+        .select()
+        .from(equipmentUnits)
+        .where(eq(equipmentUnits.id, r.unitId!))
+        .get()!
       setUnitStatus(db, unit, "lost", null, ev.id, "not returned: written off")
     } else {
-      moveBulk(db, type.id, "qtyInUse", "qtyLost", qty, null, ev.id, "not returned: written off")
+      moveBulk(
+        db,
+        type.id,
+        "qtyInUse",
+        "qtyLost",
+        qty,
+        null,
+        ev.id,
+        "not returned: written off"
+      )
     }
-    db.update(checkoutRecords).set({ qtyLost: r.qtyLost + qty }).where(eq(checkoutRecords.id, r.id)).run()
+    db.update(checkoutRecords)
+      .set({ qtyLost: r.qtyLost + qty })
+      .where(eq(checkoutRecords.id, r.id))
+      .run()
     placeHold(db, {
       userId: ev.requesterId,
       reason: "LOSS",
@@ -298,9 +402,22 @@ function clearExpiredLateHolds(db: DB, at: string): number {
   const due = db
     .select()
     .from(holds)
-    .where(and(eq(holds.reason, "LATE_RETURN"), eq(holds.status, "active"), isNotNull(holds.autoClearAt), lte(holds.autoClearAt, at)))
+    .where(
+      and(
+        eq(holds.reason, "LATE_RETURN"),
+        eq(holds.status, "active"),
+        isNotNull(holds.autoClearAt),
+        lte(holds.autoClearAt, at)
+      )
+    )
     .all()
-  for (const h of due) clearHold(db, h, null, "Cleared automatically after the late-return period.")
+  for (const h of due)
+    clearHold(
+      db,
+      h,
+      null,
+      "Cleared automatically after the late-return period."
+    )
   return due.length
 }
 
@@ -333,15 +450,24 @@ function allGrants(db: DB): GrantRow[] {
  * other grant covers (BR-002-10). Days before the grant ends stay covered by it, so they do not count.
  */
 function eventsLosingEligibility(db: DB, expiring: GrantRow): EventRow[] {
-  const others = allGrants(db).filter((g) => g.userId === expiring.userId && g.id !== expiring.id)
+  const others = allGrants(db).filter(
+    (g) => g.userId === expiring.userId && g.id !== expiring.id
+  )
   const end = expiring.validUntil!
   return db
     .select()
     .from(events)
-    .where(and(eq(events.requesterId, expiring.userId), inArray(events.state, [...REVIEWABLE])))
+    .where(
+      and(
+        eq(events.requesterId, expiring.userId),
+        inArray(events.state, [...REVIEWABLE])
+      )
+    )
     .all()
     .filter((ev) => {
-      const after = daysOf(db, ev.id).map((d) => d.day).filter((day) => day > end)
+      const after = daysOf(db, ev.id)
+        .map((d) => d.day)
+        .filter((day) => day > end)
       if (after.length === 0) return false
       const studioRank = db
         .select({ rank: levels.rank })
@@ -349,16 +475,25 @@ function eventsLosingEligibility(db: DB, expiring: GrantRow): EventRow[] {
         .innerJoin(levels, eq(levels.id, studios.minLevelId))
         .where(eq(studios.id, ev.studioId))
         .get()
-      if (studioRank && firstUncoveredDay(others, after, studioRank.rank)) return true
+      if (studioRank && firstUncoveredDay(others, after, studioRank.rank))
+        return true
       const classRanks = db
         .select({ rank: levels.rank })
         .from(equipmentLines)
-        .innerJoin(equipmentTypes, eq(equipmentTypes.id, equipmentLines.equipmentTypeId))
-        .innerJoin(equipmentClasses, eq(equipmentClasses.id, equipmentTypes.classId))
+        .innerJoin(
+          equipmentTypes,
+          eq(equipmentTypes.id, equipmentLines.equipmentTypeId)
+        )
+        .innerJoin(
+          equipmentClasses,
+          eq(equipmentClasses.id, equipmentTypes.classId)
+        )
         .innerJoin(levels, eq(levels.id, equipmentClasses.minLevelId))
         .where(eq(equipmentLines.eventId, ev.id))
         .all()
-      return classRanks.some((l) => firstUncoveredDay(others, after, l.rank) !== null)
+      return classRanks.some(
+        (l) => firstUncoveredDay(others, after, l.rank) !== null
+      )
     })
 }
 
@@ -382,7 +517,10 @@ function warnExpiringGrants(db: DB, at: string): number {
       body: `Your access ends on ${g.validUntil}. Affected requests: ${affected.map((e) => e.title).join(", ")}.`,
       key: `GRANT_EXPIRING:${g.id}`,
     })
-    db.update(levelGrants).set({ expiryWarnedAt: at }).where(eq(levelGrants.id, g.id)).run()
+    db.update(levelGrants)
+      .set({ expiryWarnedAt: at })
+      .where(eq(levelGrants.id, g.id))
+      .run()
     warned++
   }
   return warned
@@ -393,11 +531,14 @@ function recheckEndedGrants(db: DB, at: string): number {
   const today = utcToLocal(at, config.tz).day
   const users = new Set(
     allGrants(db)
-      .filter((g) => !g.revokedOn && g.validUntil !== null && g.validUntil < today)
-      .map((g) => g.userId),
+      .filter(
+        (g) => !g.revokedOn && g.validUntil !== null && g.validUntil < today
+      )
+      .map((g) => g.userId)
   )
   let flagged = 0
-  for (const userId of users) flagged += recheckEvents(db, { requesterId: userId }).length
+  for (const userId of users)
+    flagged += recheckEvents(db, { requesterId: userId }).length
   return flagged
 }
 
@@ -406,8 +547,13 @@ function recheckEndedGrants(db: DB, at: string): number {
 function warnResultsExpiring(db: DB, at: string): number {
   const horizon = addDaysIso(at, 30)
   let sent = 0
-  for (const pkg of db.select().from(resultPackages).where(eq(resultPackages.status, "published")).all()) {
-    if (!pkg.retainUntil || pkg.retainUntil > horizon || pkg.retainUntil <= at) continue
+  for (const pkg of db
+    .select()
+    .from(resultPackages)
+    .where(eq(resultPackages.status, "published"))
+    .all()) {
+    if (!pkg.retainUntil || pkg.retainUntil > horizon || pkg.retainUntil <= at)
+      continue
     const ev = getEvent(db, pkg.eventId)
     if (!ev) continue
     sent += notifyOnce(db, {
@@ -426,10 +572,19 @@ function expirePublishedResults(db: DB, at: string): number {
   const due = db
     .select()
     .from(resultPackages)
-    .where(and(eq(resultPackages.status, "published"), isNotNull(resultPackages.retainUntil), lte(resultPackages.retainUntil, at)))
+    .where(
+      and(
+        eq(resultPackages.status, "published"),
+        isNotNull(resultPackages.retainUntil),
+        lte(resultPackages.retainUntil, at)
+      )
+    )
     .all()
   for (const pkg of due) {
-    db.update(resultPackages).set({ status: "expired" }).where(eq(resultPackages.id, pkg.id)).run()
+    db.update(resultPackages)
+      .set({ status: "expired" })
+      .where(eq(resultPackages.id, pkg.id))
+      .run()
     deletePackageFiles(pkg.id)
   }
   return due.length

@@ -40,7 +40,14 @@ export interface Counts {
   lost: number
 }
 
-const emptyCounts = (): Counts => ({ total: 0, available: 0, in_use: 0, damaged: 0, in_repair: 0, lost: 0 })
+const emptyCounts = (): Counts => ({
+  total: 0,
+  available: 0,
+  in_use: 0,
+  damaged: 0,
+  in_repair: 0,
+  lost: 0,
+})
 
 /** Per-type counts by status (retired units are excluded from every count). */
 function countsByType(db: DB): Map<string, Counts> {
@@ -54,7 +61,11 @@ function countsByType(db: DB): Map<string, Counts> {
     return c
   }
   const units = db
-    .select({ typeId: equipmentUnits.typeId, status: equipmentUnits.status, n: count() })
+    .select({
+      typeId: equipmentUnits.typeId,
+      status: equipmentUnits.status,
+      n: count(),
+    })
     .from(equipmentUnits)
     .groupBy(equipmentUnits.typeId, equipmentUnits.status)
     .all()
@@ -71,7 +82,8 @@ function countsByType(db: DB): Map<string, Counts> {
     c.damaged = b.qtyDamaged
     c.in_repair = b.qtyInRepair
     c.lost = b.qtyLost
-    c.total = b.qtyAvailable + b.qtyInUse + b.qtyDamaged + b.qtyInRepair + b.qtyLost
+    c.total =
+      b.qtyAvailable + b.qtyInUse + b.qtyDamaged + b.qtyInRepair + b.qtyLost
   }
   return out
 }
@@ -81,7 +93,10 @@ function loadTypes(db: DB, where?: SQL) {
   return db
     .select({ t: equipmentTypes, cls: equipmentClasses, level: levels })
     .from(equipmentTypes)
-    .innerJoin(equipmentClasses, eq(equipmentClasses.id, equipmentTypes.classId))
+    .innerJoin(
+      equipmentClasses,
+      eq(equipmentClasses.id, equipmentTypes.classId)
+    )
     .innerJoin(levels, eq(levels.id, equipmentClasses.minLevelId))
     .where(where)
     .orderBy(asc(equipmentTypes.name))
@@ -125,26 +140,59 @@ type BulkBucket = "available" | "damaged" | "in_repair" | "lost"
 
 /** A type has stock or history: its tracking mode is locked (BR-003-02). */
 function hasStock(db: DB, typeId: string): boolean {
-  if (db.select({ id: equipmentUnits.id }).from(equipmentUnits).where(eq(equipmentUnits.typeId, typeId)).get()) return true
-  if (db.select({ typeId: statusHistory.typeId }).from(statusHistory).where(eq(statusHistory.typeId, typeId)).get()) return true
-  const b = db.select().from(bulkStock).where(eq(bulkStock.typeId, typeId)).get()
-  return !!b && b.qtyAvailable + b.qtyInUse + b.qtyDamaged + b.qtyInRepair + b.qtyLost > 0
+  if (
+    db
+      .select({ id: equipmentUnits.id })
+      .from(equipmentUnits)
+      .where(eq(equipmentUnits.typeId, typeId))
+      .get()
+  )
+    return true
+  if (
+    db
+      .select({ typeId: statusHistory.typeId })
+      .from(statusHistory)
+      .where(eq(statusHistory.typeId, typeId))
+      .get()
+  )
+    return true
+  const b = db
+    .select()
+    .from(bulkStock)
+    .where(eq(bulkStock.typeId, typeId))
+    .get()
+  return (
+    !!b &&
+    b.qtyAvailable + b.qtyInUse + b.qtyDamaged + b.qtyInRepair + b.qtyLost > 0
+  )
 }
 
 function classOf(db: DB, id: string) {
-  const c = db.select().from(equipmentClasses).where(eq(equipmentClasses.id, id)).get()
+  const c = db
+    .select()
+    .from(equipmentClasses)
+    .where(eq(equipmentClasses.id, id))
+    .get()
   if (!c) throw badRequest("UNKNOWN_CLASS", "Unknown equipment class.")
   return c
 }
 
 function typeOf(db: DB, id: string) {
-  const t = db.select().from(equipmentTypes).where(eq(equipmentTypes.id, id)).get()
+  const t = db
+    .select()
+    .from(equipmentTypes)
+    .where(eq(equipmentTypes.id, id))
+    .get()
   if (!t) throw notFound("Equipment type")
   return t
 }
 
 function unitOf(db: DB, id: string) {
-  const u = db.select().from(equipmentUnits).where(eq(equipmentUnits.id, id)).get()
+  const u = db
+    .select()
+    .from(equipmentUnits)
+    .where(eq(equipmentUnits.id, id))
+    .get()
   if (!u) throw notFound("Unit")
   return u
 }
@@ -158,12 +206,17 @@ function levelOf(db: DB, id: string) {
 /** Re-checks open events that reserve any of the given types (BR-003-08, F-006 review). */
 function recheckTypes(db: DB, typeIds: readonly string[]): string[] {
   const flagged: string[] = []
-  for (const equipmentTypeId of new Set(typeIds)) flagged.push(...recheckEvents(db, { equipmentTypeId }))
+  for (const equipmentTypeId of new Set(typeIds))
+    flagged.push(...recheckEvents(db, { equipmentTypeId }))
   return flagged
 }
 
 const isoDate = z.string().refine(isLocalDate, "Use YYYY-MM-DD.")
-const classBody = z.object({ name: z.string().trim().min(1), minLevelId: z.string(), description: z.string().optional() })
+const classBody = z.object({
+  name: z.string().trim().min(1),
+  minLevelId: z.string(),
+  description: z.string().optional(),
+})
 const classPatch = classBody.partial()
 const typeBody = z.object({
   classId: z.string(),
@@ -174,13 +227,18 @@ const typeBody = z.object({
   maxPerEvent: z.number().int().positive().nullish(),
   description: z.string().optional(),
 })
-const typePatch = typeBody.partial().extend({ status: z.enum(["active", "inactive"]).optional() })
+const typePatch = typeBody
+  .partial()
+  .extend({ status: z.enum(["active", "inactive"]).optional() })
 const unitBody = z.object({
   assetTag: z.string().trim().min(1),
   serialNumber: z.string().optional(),
   notes: z.string().optional(),
 })
-const unitPatch = z.object({ serialNumber: z.string().optional(), notes: z.string().optional() })
+const unitPatch = z.object({
+  serialNumber: z.string().optional(),
+  notes: z.string().optional(),
+})
 const statusBody = z.object({
   status: z.enum(UNIT_STATUSES),
   reason: z.string().trim().min(1, "A reason is required."),
@@ -194,7 +252,9 @@ const bulkBody = z.object({
 })
 const availabilityBody = z.object({
   days: z
-    .array(z.object({ day: isoDate, startTime: z.string(), endTime: z.string() }))
+    .array(
+      z.object({ day: isoDate, startTime: z.string(), endTime: z.string() })
+    )
     .min(1),
   excludeEventId: z.string().nullish(),
 })
@@ -214,7 +274,7 @@ export const routes = new Hono<AppEnv>()
         name: r.cls.name,
         description: r.cls.description,
         minLevel: { id: r.level.id, name: r.level.name, rank: r.level.rank },
-      })),
+      }))
     )
   })
   .post("/classes", v("json", classBody), (c) => {
@@ -225,10 +285,20 @@ export const routes = new Hono<AppEnv>()
     const row = db.transaction(() => {
       const r = db
         .insert(equipmentClasses)
-        .values({ name: body.name, minLevelId: body.minLevelId, description: body.description ?? "" })
+        .values({
+          name: body.name,
+          minLevelId: body.minLevelId,
+          description: body.description ?? "",
+        })
         .returning()
         .get()
-      audit(db, { actorId: me.id, action: "equipment_class.create", entityType: "equipment_class", entityId: r.id, after: r })
+      audit(db, {
+        actorId: me.id,
+        action: "equipment_class.create",
+        entityType: "equipment_class",
+        entityId: r.id,
+        after: r,
+      })
       return r
     })
     return c.json(row, 201)
@@ -240,7 +310,8 @@ export const routes = new Hono<AppEnv>()
     const before = classOf(db, id)
     const body = c.req.valid("json")
     if (body.minLevelId) levelOf(db, body.minLevelId)
-    const levelChanged = body.minLevelId !== undefined && body.minLevelId !== before.minLevelId
+    const levelChanged =
+      body.minLevelId !== undefined && body.minLevelId !== before.minLevelId
     const flaggedEvents = db.transaction(() => {
       const after = db
         .update(equipmentClasses)
@@ -252,7 +323,14 @@ export const routes = new Hono<AppEnv>()
         .where(eq(equipmentClasses.id, id))
         .returning()
         .get()
-      audit(db, { actorId: me.id, action: "equipment_class.update", entityType: "equipment_class", entityId: id, before, after })
+      audit(db, {
+        actorId: me.id,
+        action: "equipment_class.update",
+        entityType: "equipment_class",
+        entityId: id,
+        before,
+        after,
+      })
       if (!levelChanged) return []
       const typeIds = db
         .select({ id: equipmentTypes.id })
@@ -264,24 +342,31 @@ export const routes = new Hono<AppEnv>()
     })
     return c.json({ ...classOf(db, id), flaggedEvents })
   })
-  .get("/types", v("query", z.object({ includeInactive: z.string().optional() })), (c) => {
-    const me = requireUser(c)
-    const db = c.var.db
-    const includeInactive = isStaff(me) && c.req.valid("query").includeInactive === "1"
-    const counts = countsByType(db)
-    return c.json(
-      loadTypes(db, includeInactive ? undefined : eq(equipmentTypes.status, "active")).map((r) =>
-        typeView(r, counts.get(r.t.id) ?? emptyCounts()),
-      ),
-    )
-  })
+  .get(
+    "/types",
+    v("query", z.object({ includeInactive: z.string().optional() })),
+    (c) => {
+      const me = requireUser(c)
+      const db = c.var.db
+      const includeInactive =
+        isStaff(me) && c.req.valid("query").includeInactive === "1"
+      const counts = countsByType(db)
+      return c.json(
+        loadTypes(
+          db,
+          includeInactive ? undefined : eq(equipmentTypes.status, "active")
+        ).map((r) => typeView(r, counts.get(r.t.id) ?? emptyCounts()))
+      )
+    }
+  )
   .get("/types/:id", (c) => {
     const me = requireUser(c)
     const db = c.var.db
     const id = c.req.param("id")
     const staff = isStaff(me)
     const row = loadTypes(db, eq(equipmentTypes.id, id))[0]
-    if (!row || (row.t.status !== "active" && !staff)) throw notFound("Equipment type")
+    if (!row || (row.t.status !== "active" && !staff))
+      throw notFound("Equipment type")
     const counts = countsByType(db).get(id) ?? emptyCounts()
     const view = typeView(row, counts)
     // One response shape for every caller: staff get the detail, everyone else gets empty detail (never omitted).
@@ -300,7 +385,10 @@ export const routes = new Hono<AppEnv>()
           .orderBy(asc(equipmentUnits.assetTag))
           .all()
       : []
-    const bulk = staff ? (db.select().from(bulkStock).where(eq(bulkStock.typeId, id)).get() ?? null) : null
+    const bulk = staff
+      ? (db.select().from(bulkStock).where(eq(bulkStock.typeId, id)).get() ??
+        null)
+      : null
     const history = staff
       ? db
           .select()
@@ -332,8 +420,15 @@ export const routes = new Hono<AppEnv>()
         .returning()
         .get()
       // Bulk types always have a stock row so reservations and adjustments have somewhere to land.
-      if (r.tracking === "bulk") db.insert(bulkStock).values({ typeId: r.id }).run()
-      audit(db, { actorId: me.id, action: "equipment_type.create", entityType: "equipment_type", entityId: r.id, after: r })
+      if (r.tracking === "bulk")
+        db.insert(bulkStock).values({ typeId: r.id }).run()
+      audit(db, {
+        actorId: me.id,
+        action: "equipment_type.create",
+        entityType: "equipment_type",
+        entityId: r.id,
+        after: r,
+      })
       return r
     })
     return c.json(row, 201)
@@ -345,9 +440,13 @@ export const routes = new Hono<AppEnv>()
     const before = typeOf(db, id)
     const body = c.req.valid("json")
     if (body.classId) classOf(db, body.classId)
-    const trackingChanged = body.tracking !== undefined && body.tracking !== before.tracking
+    const trackingChanged =
+      body.tracking !== undefined && body.tracking !== before.tracking
     if (trackingChanged && hasStock(db, id))
-      throw conflict("TRACKING_LOCKED", "Tracking cannot change once units or stock exist. Retire this type and create a new one.")
+      throw conflict(
+        "TRACKING_LOCKED",
+        "Tracking cannot change once units or stock exist. Retire this type and create a new one."
+      )
     const flaggedEvents = db.transaction(() => {
       const after = db
         .update(equipmentTypes)
@@ -357,7 +456,10 @@ export const routes = new Hono<AppEnv>()
           manufacturer: body.manufacturer ?? before.manufacturer,
           model: body.model ?? before.model,
           tracking: body.tracking ?? before.tracking,
-          maxPerEvent: body.maxPerEvent === undefined ? before.maxPerEvent : body.maxPerEvent,
+          maxPerEvent:
+            body.maxPerEvent === undefined
+              ? before.maxPerEvent
+              : body.maxPerEvent,
           description: body.description ?? before.description,
           status: body.status ?? before.status,
         })
@@ -365,37 +467,73 @@ export const routes = new Hono<AppEnv>()
         .returning()
         .get()
       if (trackingChanged) {
-        if (after.tracking === "bulk") db.insert(bulkStock).values({ typeId: id }).run()
+        if (after.tracking === "bulk")
+          db.insert(bulkStock).values({ typeId: id }).run()
         else db.delete(bulkStock).where(eq(bulkStock.typeId, id)).run()
       }
-      audit(db, { actorId: me.id, action: "equipment_type.update", entityType: "equipment_type", entityId: id, before, after })
+      audit(db, {
+        actorId: me.id,
+        action: "equipment_type.update",
+        entityType: "equipment_type",
+        entityId: id,
+        before,
+        after,
+      })
       const capacityChanged =
         (body.status !== undefined && body.status !== before.status) ||
         (body.classId !== undefined && body.classId !== before.classId)
       return capacityChanged ? recheckEvents(db, { equipmentTypeId: id }) : []
     })
     const row = loadTypes(db, eq(equipmentTypes.id, id))[0]!
-    return c.json({ ...typeView(row, countsByType(db).get(id) ?? emptyCounts()), flaggedEvents })
+    return c.json({
+      ...typeView(row, countsByType(db).get(id) ?? emptyCounts()),
+      flaggedEvents,
+    })
   })
   .post("/types/:id/units", v("json", unitBody), (c) => {
     const me = authorize(c, "inventory.manage")
     const db = c.var.db
     const typeId = c.req.param("id")
     const type = typeOf(db, typeId)
-    if (type.tracking !== "serialized") throw badRequest("NOT_SERIALIZED", "Only serialized types have units.")
+    if (type.tracking !== "serialized")
+      throw badRequest("NOT_SERIALIZED", "Only serialized types have units.")
     const body = c.req.valid("json")
-    if (db.select({ id: equipmentUnits.id }).from(equipmentUnits).where(eq(equipmentUnits.assetTag, body.assetTag)).get())
+    if (
+      db
+        .select({ id: equipmentUnits.id })
+        .from(equipmentUnits)
+        .where(eq(equipmentUnits.assetTag, body.assetTag))
+        .get()
+    )
       throw conflict("ASSET_TAG_TAKEN", "That asset tag is already used.")
     const unit = db.transaction(() => {
       const u = db
         .insert(equipmentUnits)
-        .values({ typeId, assetTag: body.assetTag, serialNumber: body.serialNumber ?? "", notes: body.notes ?? "" })
+        .values({
+          typeId,
+          assetTag: body.assetTag,
+          serialNumber: body.serialNumber ?? "",
+          notes: body.notes ?? "",
+        })
         .returning()
         .get()
       db.insert(statusHistory)
-        .values({ unitId: u.id, typeId, fromStatus: null, toStatus: u.status, actorId: me.id, reason: "Added to inventory" })
+        .values({
+          unitId: u.id,
+          typeId,
+          fromStatus: null,
+          toStatus: u.status,
+          actorId: me.id,
+          reason: "Added to inventory",
+        })
         .run()
-      audit(db, { actorId: me.id, action: "unit.create", entityType: "unit", entityId: u.id, after: u })
+      audit(db, {
+        actorId: me.id,
+        action: "unit.create",
+        entityType: "unit",
+        entityId: u.id,
+        after: u,
+      })
       return u
     })
     return c.json(unit, 201)
@@ -409,11 +547,21 @@ export const routes = new Hono<AppEnv>()
     const after = db.transaction(() => {
       const u = db
         .update(equipmentUnits)
-        .set({ serialNumber: body.serialNumber ?? before.serialNumber, notes: body.notes ?? before.notes })
+        .set({
+          serialNumber: body.serialNumber ?? before.serialNumber,
+          notes: body.notes ?? before.notes,
+        })
         .where(eq(equipmentUnits.id, id))
         .returning()
         .get()
-      audit(db, { actorId: me.id, action: "unit.update", entityType: "unit", entityId: id, before, after: u })
+      audit(db, {
+        actorId: me.id,
+        action: "unit.update",
+        entityType: "unit",
+        entityId: id,
+        before,
+        after: u,
+      })
       return u
     })
     return c.json(after)
@@ -424,17 +572,25 @@ export const routes = new Hono<AppEnv>()
     const id = c.req.param("id")
     const unit = unitOf(db, id)
     const body = c.req.valid("json")
-    if (body.status === unit.status) throw badRequest("NO_CHANGE", "The unit already has that status.")
+    if (body.status === unit.status)
+      throw badRequest("NO_CHANGE", "The unit already has that status.")
     if (!TRANSITIONS[unit.status]?.includes(body.status))
       throw badRequest(
         "INVALID_TRANSITION",
-        `A unit cannot move from ${unit.status} to ${body.status} here. Checkout and check-in move units in and out of use.`,
+        `A unit cannot move from ${unit.status} to ${body.status} here. Checkout and check-in move units in and out of use.`
       )
     if (body.status === "in_repair" && !body.expectedBack)
-      throw badRequest("EXPECTED_BACK_REQUIRED", "Give the date the unit is expected back from repair.")
+      throw badRequest(
+        "EXPECTED_BACK_REQUIRED",
+        "Give the date the unit is expected back from repair."
+      )
     const flagged = db.transaction(() => {
       db.update(equipmentUnits)
-        .set({ status: body.status, expectedBack: body.status === "in_repair" ? (body.expectedBack ?? null) : null })
+        .set({
+          status: body.status,
+          expectedBack:
+            body.status === "in_repair" ? (body.expectedBack ?? null) : null,
+        })
         .where(eq(equipmentUnits.id, id))
         .run()
       db.insert(statusHistory)
@@ -467,23 +623,58 @@ export const routes = new Hono<AppEnv>()
     const db = c.var.db
     const typeId = c.req.param("id")
     const type = typeOf(db, typeId)
-    if (type.tracking !== "bulk") throw badRequest("NOT_BULK", "Only bulk types can be adjusted by quantity.")
+    if (type.tracking !== "bulk")
+      throw badRequest(
+        "NOT_BULK",
+        "Only bulk types can be adjusted by quantity."
+      )
     const { from, to, qty, reason } = c.req.valid("json")
-    if (from === null && to === null) throw badRequest("NO_CHANGE", "Give a source status, a target status, or both.")
-    if (from !== null && from === to) throw badRequest("NO_CHANGE", "Source and target are the same.")
+    if (from === null && to === null)
+      throw badRequest(
+        "NO_CHANGE",
+        "Give a source status, a target status, or both."
+      )
+    if (from !== null && from === to)
+      throw badRequest("NO_CHANGE", "Source and target are the same.")
     if (from !== null && to !== null && !TRANSITIONS[from]?.includes(to))
-      throw badRequest("INVALID_TRANSITION", `Stock cannot move from ${from} to ${to}.`)
-    const stock = db.select().from(bulkStock).where(eq(bulkStock.typeId, typeId)).get()
-    if (!stock) throw badRequest("NO_STOCK_ROW", "This type has no stock record.")
+      throw badRequest(
+        "INVALID_TRANSITION",
+        `Stock cannot move from ${from} to ${to}.`
+      )
+    const stock = db
+      .select()
+      .from(bulkStock)
+      .where(eq(bulkStock.typeId, typeId))
+      .get()
+    if (!stock)
+      throw badRequest("NO_STOCK_ROW", "This type has no stock record.")
     if (from !== null && bucketQty(stock, from) < qty)
-      throw badRequest("INSUFFICIENT_STOCK", `Only ${bucketQty(stock, from)} in ${from}.`)
+      throw badRequest(
+        "INSUFFICIENT_STOCK",
+        `Only ${bucketQty(stock, from)} in ${from}.`
+      )
 
     const flagged = db.transaction(() => {
-      if (from !== null) db.update(bulkStock).set(bucketDelta(from, -qty)).where(eq(bulkStock.typeId, typeId)).run()
-      if (to !== null) db.update(bulkStock).set(bucketDelta(to, qty)).where(eq(bulkStock.typeId, typeId)).run()
+      if (from !== null)
+        db.update(bulkStock)
+          .set(bucketDelta(from, -qty))
+          .where(eq(bulkStock.typeId, typeId))
+          .run()
+      if (to !== null)
+        db.update(bulkStock)
+          .set(bucketDelta(to, qty))
+          .where(eq(bulkStock.typeId, typeId))
+          .run()
       // Removing stock is recorded as moving it to retired (status_history.to_status is required).
       db.insert(statusHistory)
-        .values({ typeId, fromStatus: from, toStatus: to ?? "retired", qty, actorId: me.id, reason })
+        .values({
+          typeId,
+          fromStatus: from,
+          toStatus: to ?? "retired",
+          qty,
+          actorId: me.id,
+          reason,
+        })
         .run()
       audit(db, {
         actorId: me.id,
@@ -495,17 +686,25 @@ export const routes = new Hono<AppEnv>()
         reason,
       })
       // BR-003-08: capacity drops when stock leaves available or in_repair for anything but available.
-      const capacityDrops = from !== null && (from === "available" || from === "in_repair") && to !== "available"
+      const capacityDrops =
+        from !== null &&
+        (from === "available" || from === "in_repair") &&
+        to !== "available"
       return capacityDrops ? recheckTypes(db, [typeId]) : []
     })
-    return c.json({ typeId, counts: countsByType(db).get(typeId) ?? emptyCounts(), flaggedEvents: flagged })
+    return c.json({
+      typeId,
+      counts: countsByType(db).get(typeId) ?? emptyCounts(),
+      flaggedEvents: flagged,
+    })
   })
   .post("/availability", v("json", availabilityBody), (c) => {
     const me = requireUser(c)
     const db = c.var.db
     const body = c.req.valid("json")
     const { intervals, issues } = toIntervals(body.days, config.tz)
-    if (issues.length) throw badRequest("DAY_INVALID", issues[0]!.message, issues)
+    if (issues.length)
+      throw badRequest("DAY_INVALID", issues[0]!.message, issues)
     const window: Interval = eventWindow(intervals)
     const types = loadTypes(db, eq(equipmentTypes.status, "active"))
     const avail = availability(
@@ -513,7 +712,7 @@ export const routes = new Hono<AppEnv>()
       types.map((t) => t.t.id),
       window,
       intervals[0]!.day,
-      { excludeEventId: body.excludeEventId ?? undefined },
+      { excludeEventId: body.excludeEventId ?? undefined }
     )
     const grants = grantsFor(db, me.id)
     const days = intervals.map((d) => d.day)
@@ -523,12 +722,15 @@ export const routes = new Hono<AppEnv>()
         available: avail.get(r.t.id) ?? 0,
         eligible: firstUncoveredDay(grants, days, r.level.rank) === null,
         minLevelName: r.level.name,
-      })),
+      }))
     )
   })
 
 /** Quantity held in one bulk bucket (BR-003-09). */
-function bucketQty(stock: typeof bulkStock.$inferSelect, status: BulkBucket): number {
+function bucketQty(
+  stock: typeof bulkStock.$inferSelect,
+  status: BulkBucket
+): number {
   return {
     available: stock.qtyAvailable,
     damaged: stock.qtyDamaged,
@@ -538,7 +740,12 @@ function bucketQty(stock: typeof bulkStock.$inferSelect, status: BulkBucket): nu
 }
 
 /** Update that moves `delta` units into (positive) or out of (negative) one bulk bucket. */
-function bucketDelta(status: BulkBucket, delta: number): Partial<Record<"qtyAvailable" | "qtyDamaged" | "qtyInRepair" | "qtyLost", SQL>> {
+function bucketDelta(
+  status: BulkBucket,
+  delta: number
+): Partial<
+  Record<"qtyAvailable" | "qtyDamaged" | "qtyInRepair" | "qtyLost", SQL>
+> {
   switch (status) {
     case "available":
       return { qtyAvailable: sql`${bulkStock.qtyAvailable} + ${delta}` }

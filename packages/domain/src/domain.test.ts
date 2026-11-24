@@ -22,8 +22,18 @@ import {
 const TZ = "America/Chicago"
 
 describe("levels (F-002)", () => {
-  const course = { levelRank: 1, validFrom: "2027-01-20", validUntil: "2027-05-15", revokedOn: null }
-  const manual = { levelRank: 3, validFrom: "2027-01-01", validUntil: "2027-03-01", revokedOn: null }
+  const course = {
+    levelRank: 1,
+    validFrom: "2027-01-20",
+    validUntil: "2027-05-15",
+    revokedOn: null,
+  }
+  const manual = {
+    levelRank: 3,
+    validFrom: "2027-01-01",
+    validUntil: "2027-03-01",
+    revokedOn: null,
+  }
 
   it("takes the highest active grant per day (US-002-03)", () => {
     expect(effectiveLevel([course, manual], "2027-02-01")).toBe(3)
@@ -32,7 +42,12 @@ describe("levels (F-002)", () => {
   })
 
   it("requires coverage on every event day (US-002-05)", () => {
-    const l3 = { levelRank: 3, validFrom: "2027-01-01", validUntil: "2027-05-15", revokedOn: null }
+    const l3 = {
+      levelRank: 3,
+      validFrom: "2027-01-01",
+      validUntil: "2027-05-15",
+      revokedOn: null,
+    }
     expect(eventLevel([l3], ["2027-05-14", "2027-05-15", "2027-05-16"])).toBe(0)
   })
 
@@ -43,7 +58,19 @@ describe("levels (F-002)", () => {
   })
 
   it("keeps open-ended grants active indefinitely", () => {
-    expect(effectiveLevel([{ levelRank: 2, validFrom: "2027-01-01", validUntil: null, revokedOn: null }], "2035-01-01")).toBe(2)
+    expect(
+      effectiveLevel(
+        [
+          {
+            levelRank: 2,
+            validFrom: "2027-01-01",
+            validUntil: null,
+            revokedOn: null,
+          },
+        ],
+        "2035-01-01"
+      )
+    ).toBe(2)
   })
 })
 
@@ -51,7 +78,11 @@ describe("time zone conversion", () => {
   it("round-trips across DST", () => {
     const iso = localToUtc("2027-03-14", "10:00", TZ) // DST starts 2027-03-14 in the US
     expect(iso).toBe("2027-03-14T15:00:00.000Z")
-    expect(utcToLocal(iso, TZ)).toMatchObject({ day: "2027-03-14", time: "10:00", weekday: 6 })
+    expect(utcToLocal(iso, TZ)).toMatchObject({
+      day: "2027-03-14",
+      time: "10:00",
+      weekday: 6,
+    })
   })
 })
 
@@ -69,23 +100,51 @@ describe("availability (F-003)", () => {
   it("sums overlapping reservations, excluding the event under test", () => {
     const w = (s: string, e: string) => ({ start: s, end: e })
     const res = [
-      { equipmentTypeId: "fx6", qty: 1, eventId: "a", window: w("2027-04-05T14:00:00Z", "2027-04-05T18:00:00Z") },
-      { equipmentTypeId: "fx6", qty: 1, eventId: "b", window: w("2027-04-05T18:00:00Z", "2027-04-05T20:00:00Z") },
+      {
+        equipmentTypeId: "fx6",
+        qty: 1,
+        eventId: "a",
+        window: w("2027-04-05T14:00:00Z", "2027-04-05T18:00:00Z"),
+      },
+      {
+        equipmentTypeId: "fx6",
+        qty: 1,
+        eventId: "b",
+        window: w("2027-04-05T18:00:00Z", "2027-04-05T20:00:00Z"),
+      },
     ]
-    expect(reservedQty(res, "fx6", w("2027-04-05T17:00:00Z", "2027-04-05T19:00:00Z"))).toBe(2)
-    expect(reservedQty(res, "fx6", w("2027-04-05T17:00:00Z", "2027-04-05T19:00:00Z"), "a")).toBe(1)
-    expect(reservedQty(res, "fx6", w("2027-04-05T20:00:00Z", "2027-04-05T21:00:00Z"))).toBe(0)
+    expect(
+      reservedQty(res, "fx6", w("2027-04-05T17:00:00Z", "2027-04-05T19:00:00Z"))
+    ).toBe(2)
+    expect(
+      reservedQty(
+        res,
+        "fx6",
+        w("2027-04-05T17:00:00Z", "2027-04-05T19:00:00Z"),
+        "a"
+      )
+    ).toBe(1)
+    expect(
+      reservedQty(res, "fx6", w("2027-04-05T20:00:00Z", "2027-04-05T21:00:00Z"))
+    ).toBe(0)
   })
 })
 
-function baseCtx(overrides: Partial<SubmissionContext> = {}): SubmissionContext {
+function baseCtx(
+  overrides: Partial<SubmissionContext> = {}
+): SubmissionContext {
   return {
     now: "2027-04-01T15:00:00.000Z",
     tz: TZ,
     requesterId: "stu",
     requesterHasActiveHold: false,
     sponsor: { id: "prof", active: true, isSponsor: true },
-    eventType: { active: true, maxDays: 3, maxHoursPerDay: 8, allowedStudioIds: ["A"] },
+    eventType: {
+      active: true,
+      maxDays: 3,
+      maxHoursPerDay: 8,
+      allowedStudioIds: ["A"],
+    },
     studio: {
       id: "A",
       active: true,
@@ -93,14 +152,31 @@ function baseCtx(overrides: Partial<SubmissionContext> = {}): SubmissionContext 
       minLevelName: "Level 1",
       turnaroundMinutes: 30,
       slotGranularityMinutes: 30,
-      openingHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, opens: "08:00", closes: "22:00" })),
+      openingHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+        weekday,
+        opens: "08:00",
+        closes: "22:00",
+      })),
       blackouts: [],
     },
     studioBusy: [],
     days: [{ day: "2027-04-06", startTime: "10:00", endTime: "13:00" }],
-    grants: [{ levelRank: 2, validFrom: "2027-01-01", validUntil: null, revokedOn: null }],
+    grants: [
+      {
+        levelRank: 2,
+        validFrom: "2027-01-01",
+        validUntil: null,
+        revokedOn: null,
+      },
+    ],
     lines: [],
-    policy: { leadTimeHours: 48, advanceDays: 60, weeklyHours: 10, openCap: 3, decisionCutoffHours: 24 },
+    policy: {
+      leadTimeHours: 48,
+      advanceDays: 60,
+      weeklyHours: 10,
+      openCap: 3,
+      decisionCutoffHours: 24,
+    },
     requesterWeeklyHours: {},
     requesterOpenEvents: 0,
     ...overrides,
@@ -119,24 +195,44 @@ describe("validateSubmission (F-006 §5)", () => {
           { day: "2027-04-06", startTime: "10:00", endTime: "12:00" },
           { day: "2027-04-08", startTime: "10:00", endTime: "12:00" },
         ],
-      }),
+      })
     )
     expect(issues.map((i) => i.code)).toContain("DAYS_NOT_CONSECUTIVE")
   })
 
   it("enforces turnaround against existing bookings (US-004-01)", () => {
-    const busy = [{ start: localToUtc("2027-04-06", "08:00", TZ), end: localToUtc("2027-04-06", "10:00", TZ) }]
-    expect(validateSubmission(baseCtx({ studioBusy: busy })).map((i) => i.code)).toContain("STUDIO_CONFLICT")
-    const later = baseCtx({ studioBusy: busy, days: [{ day: "2027-04-06", startTime: "10:30", endTime: "12:00" }] })
+    const busy = [
+      {
+        start: localToUtc("2027-04-06", "08:00", TZ),
+        end: localToUtc("2027-04-06", "10:00", TZ),
+      },
+    ]
+    expect(
+      validateSubmission(baseCtx({ studioBusy: busy })).map((i) => i.code)
+    ).toContain("STUDIO_CONFLICT")
+    const later = baseCtx({
+      studioBusy: busy,
+      days: [{ day: "2027-04-06", startTime: "10:30", endTime: "12:00" }],
+    })
     expect(validateSubmission(later)).toEqual([])
   })
 
   it("treats lead time as soft but the decision cutoff as hard", () => {
-    const soon = validateSubmission(baseCtx({ days: [{ day: "2027-04-02", startTime: "16:00", endTime: "18:00" }] }))
+    const soon = validateSubmission(
+      baseCtx({
+        days: [{ day: "2027-04-02", startTime: "16:00", endTime: "18:00" }],
+      })
+    )
     expect(soon.find((i) => i.code === "LEAD_TIME")?.severity).toBe("soft")
     expect(softCodes(soon)).toEqual(["LEAD_TIME"])
-    const tooSoon = validateSubmission(baseCtx({ days: [{ day: "2027-04-02", startTime: "09:00", endTime: "10:00" }] }))
-    expect(tooSoon.find((i) => i.code === "DECISION_CUTOFF")?.severity).toBe("hard")
+    const tooSoon = validateSubmission(
+      baseCtx({
+        days: [{ day: "2027-04-02", startTime: "09:00", endTime: "10:00" }],
+      })
+    )
+    expect(tooSoon.find((i) => i.code === "DECISION_CUTOFF")?.severity).toBe(
+      "hard"
+    )
   })
 
   it("flags equipment above the student's level and shortages", () => {
@@ -154,31 +250,62 @@ describe("validateSubmission (F-006 §5)", () => {
             availableQty: 1,
           },
         ],
-      }),
+      })
     )
-    expect(issues.map((i) => i.code).sort()).toEqual(["EQUIPMENT_SHORTAGE", "LEVEL_EQUIPMENT"])
+    expect(issues.map((i) => i.code).sort()).toEqual([
+      "EQUIPMENT_SHORTAGE",
+      "LEVEL_EQUIPMENT",
+    ])
   })
 
   it("blocks self-sponsorship and active holds", () => {
     const issues = validateSubmission(
-      baseCtx({ requesterHasActiveHold: true, sponsor: { id: "stu", active: true, isSponsor: true } }),
+      baseCtx({
+        requesterHasActiveHold: true,
+        sponsor: { id: "stu", active: true, isSponsor: true },
+      })
     )
-    expect(issues.map((i) => i.code).sort()).toEqual(["HOLD_ACTIVE", "SPONSOR_SELF"])
+    expect(issues.map((i) => i.code).sort()).toEqual([
+      "HOLD_ACTIVE",
+      "SPONSOR_SELF",
+    ])
   })
 
   it("counts existing weekly hours toward the cap", () => {
-    const issues = validateSubmission(baseCtx({ requesterWeeklyHours: { "2027-W14": 8 } }))
+    const issues = validateSubmission(
+      baseCtx({ requesterWeeklyHours: { "2027-W14": 8 } })
+    )
     expect(issues.map((i) => i.code)).toEqual(["WEEKLY_HOURS"])
   })
 })
 
 describe("event state machine (F-006 §4, BR-006-11)", () => {
   it("returns confirmed events to staff on material change, to sponsor on sponsor change", () => {
-    const material = editAction({ sponsorChanged: false, typeChanged: false, daysChanged: true, studioChanged: false, equipmentIncreased: false })
+    const material = editAction({
+      sponsorChanged: false,
+      typeChanged: false,
+      daysChanged: true,
+      studioChanged: false,
+      equipmentIncreased: false,
+    })
     expect(nextState("Confirmed", material!)).toBe("SponsorApproved")
-    const approval = editAction({ sponsorChanged: true, typeChanged: false, daysChanged: true, studioChanged: false, equipmentIncreased: false })
+    const approval = editAction({
+      sponsorChanged: true,
+      typeChanged: false,
+      daysChanged: true,
+      studioChanged: false,
+      equipmentIncreased: false,
+    })
     expect(nextState("Confirmed", approval!)).toBe("Submitted")
-    expect(editAction({ sponsorChanged: false, typeChanged: false, daysChanged: false, studioChanged: false, equipmentIncreased: false })).toBeNull()
+    expect(
+      editAction({
+        sponsorChanged: false,
+        typeChanged: false,
+        daysChanged: false,
+        studioChanged: false,
+        equipmentIncreased: false,
+      })
+    ).toBeNull()
   })
 
   it("does not allow cancelling once checked out", () => {
@@ -189,15 +316,51 @@ describe("event state machine (F-006 §4, BR-006-11)", () => {
 describe("planStages (F-005)", () => {
   const quiet = { start: "22:00", end: "07:00" }
   const days = [
-    { start: localToUtc("2027-04-10", "10:00", TZ), end: localToUtc("2027-04-10", "18:00", TZ) },
-    { start: localToUtc("2027-04-11", "10:00", TZ), end: localToUtc("2027-04-11", "18:00", TZ) },
+    {
+      start: localToUtc("2027-04-10", "10:00", TZ),
+      end: localToUtc("2027-04-10", "18:00", TZ),
+    },
+    {
+      start: localToUtc("2027-04-11", "10:00", TZ),
+      end: localToUtc("2027-04-11", "18:00", TZ),
+    },
   ]
   const tpl = [
-    { id: "confirm", seq: 1, kind: "reminder" as const, anchor: "event_start" as const, offsetMinutes: -14 * 1440 },
-    { id: "wk", seq: 2, kind: "reminder" as const, anchor: "event_start" as const, offsetMinutes: -7 * 1440 },
-    { id: "day", seq: 3, kind: "reminder" as const, anchor: "event_start" as const, offsetMinutes: -1440 },
-    { id: "safety", seq: 4, kind: "task" as const, anchor: "event_start" as const, offsetMinutes: -3 * 1440 },
-    { id: "daily", seq: 5, kind: "reminder" as const, anchor: "each_day_start" as const, offsetMinutes: -60 },
+    {
+      id: "confirm",
+      seq: 1,
+      kind: "reminder" as const,
+      anchor: "event_start" as const,
+      offsetMinutes: -14 * 1440,
+    },
+    {
+      id: "wk",
+      seq: 2,
+      kind: "reminder" as const,
+      anchor: "event_start" as const,
+      offsetMinutes: -7 * 1440,
+    },
+    {
+      id: "day",
+      seq: 3,
+      kind: "reminder" as const,
+      anchor: "event_start" as const,
+      offsetMinutes: -1440,
+    },
+    {
+      id: "safety",
+      seq: 4,
+      kind: "task" as const,
+      anchor: "event_start" as const,
+      offsetMinutes: -3 * 1440,
+    },
+    {
+      id: "daily",
+      seq: 5,
+      kind: "reminder" as const,
+      anchor: "each_day_start" as const,
+      offsetMinutes: -60,
+    },
   ]
 
   it("sends the first stage now, skips other past reminders, opens tasks (US-005-02)", () => {
@@ -212,10 +375,27 @@ describe("planStages (F-005)", () => {
   })
 
   it("moves reminders out of quiet hours", () => {
-    const early = [{ id: "x", seq: 1, kind: "reminder" as const, anchor: "event_start" as const, offsetMinutes: -60 * 12 }]
+    const early = [
+      {
+        id: "x",
+        seq: 1,
+        kind: "reminder" as const,
+        anchor: "event_start" as const,
+        offsetMinutes: -60 * 12,
+      },
+    ]
     // 10:00 − 12h = 22:00 the previous evening → moved to 07:00 the event day
-    const [p] = planStages(early, days, localToUtc("2027-04-01", "12:00", TZ), TZ, quiet)
-    expect(utcToLocal(p!.dueAt, TZ)).toMatchObject({ day: "2027-04-10", time: "07:00" })
+    const [p] = planStages(
+      early,
+      days,
+      localToUtc("2027-04-01", "12:00", TZ),
+      TZ,
+      quiet
+    )
+    expect(utcToLocal(p!.dueAt, TZ)).toMatchObject({
+      day: "2027-04-10",
+      time: "07:00",
+    })
   })
 })
 
@@ -247,7 +427,9 @@ describe("permissions (F-001)", () => {
     expect(hasUnscoped(sam, "checkout.perform")).toBe(false)
     // Other permissions from the same roles are untouched.
     expect(can(sam, "event.staff_decide", { studioId: "A" })).toBe(true)
-    expect(effectivePermissions(sam).find((g) => g.permission === "checkout.perform")).toMatchObject({
+    expect(
+      effectivePermissions(sam).find((g) => g.permission === "checkout.perform")
+    ).toMatchObject({
       denied: true,
       sources: [
         { role: "STUDIO_STAFF", scope: "studio" },

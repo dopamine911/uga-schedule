@@ -190,9 +190,15 @@ export function StageEditor({
                   className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {isOpen ? (
-                    <ChevronDownIcon aria-hidden="true" className="size-4 shrink-0" />
+                    <ChevronDownIcon
+                      aria-hidden="true"
+                      className="size-4 shrink-0"
+                    />
                   ) : (
-                    <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0" />
+                    <ChevronRightIcon
+                      aria-hidden="true"
+                      className="size-4 shrink-0"
+                    />
                   )}
                   <span className="text-sm font-medium">
                     Stage {i + 1}
@@ -240,14 +246,20 @@ export function StageEditor({
                 <div id={bodyId} className="flex flex-col gap-4">
                   <FieldGroup>
                     <div className="grid gap-4 sm:grid-cols-2">
-                      <LabeledField label="Name" htmlFor={`stage-name-${s.key}`}>
+                      <LabeledField
+                        label="Name"
+                        htmlFor={`stage-name-${s.key}`}
+                      >
                         <Input
                           id={`stage-name-${s.key}`}
                           value={s.name}
                           onChange={(e) => patch(i, { name: e.target.value })}
                         />
                       </LabeledField>
-                      <LabeledField label="Kind" htmlFor={`stage-kind-${s.key}`}>
+                      <LabeledField
+                        label="Kind"
+                        htmlFor={`stage-kind-${s.key}`}
+                      >
                         <SimpleSelect
                           id={`stage-kind-${s.key}`}
                           value={s.kind}
@@ -274,7 +286,9 @@ export function StageEditor({
                             min={0}
                             className="w-24"
                             value={s.amount}
-                            onChange={(e) => patch(i, { amount: e.target.value })}
+                            onChange={(e) =>
+                              patch(i, { amount: e.target.value })
+                            }
                             aria-label="Amount"
                           />
                           <div className="flex flex-col gap-1">
@@ -320,10 +334,14 @@ export function StageEditor({
                           </div>
                         </div>
                         <FieldDescription>
-                          Relative to the anchor. Up to 90 days before, 30 days after.
+                          Relative to the anchor. Up to 90 days before, 30 days
+                          after.
                         </FieldDescription>
                       </Field>
-                      <LabeledField label="Anchor" htmlFor={`stage-anchor-${s.key}`}>
+                      <LabeledField
+                        label="Anchor"
+                        htmlFor={`stage-anchor-${s.key}`}
+                      >
                         <SimpleSelect
                           id={`stage-anchor-${s.key}`}
                           value={s.anchor}
@@ -382,20 +400,26 @@ export function StageEditor({
                           <Switch
                             id={`stage-blocks-${s.key}`}
                             checked={s.blocksCheckout}
-                            onCheckedChange={(x) => patch(i, { blocksCheckout: x })}
+                            onCheckedChange={(x) =>
+                              patch(i, { blocksCheckout: x })
+                            }
                           />
                           <div className="flex flex-col gap-1">
                             <FieldLabel htmlFor={`stage-blocks-${s.key}`}>
                               Blocks checkout
                             </FieldLabel>
                             <FieldDescription>
-                              Equipment can't be handed out until this task is done.
+                              Equipment can't be handed out until this task is
+                              done.
                             </FieldDescription>
                           </div>
                         </Field>
                       </div>
                     )}
-                    <LabeledField label="Message" htmlFor={`stage-message-${s.key}`}>
+                    <LabeledField
+                      label="Message"
+                      htmlFor={`stage-message-${s.key}`}
+                    >
                       <Textarea
                         id={`stage-message-${s.key}`}
                         rows={3}

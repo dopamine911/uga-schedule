@@ -15,7 +15,9 @@ export function FormAlerts({
     <>
       {inProgress && (
         <Alert>
-          <AlertTitle>Changing a request that is already in progress</AlertTitle>
+          <AlertTitle>
+            Changing a request that is already in progress
+          </AlertTitle>
           <AlertDescription>
             Changing dates, studio or equipment sends this back to staff for
             confirmation. Changing the sponsor or event type needs sponsor

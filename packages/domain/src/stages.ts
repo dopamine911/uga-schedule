@@ -28,10 +28,18 @@ export interface QuietHours {
  * Moves a reminder falling inside quiet hours to the end of quiet hours (BR-005-10),
  * unless that would push it past the event start.
  */
-export function applyQuietHours(dueAt: string, eventStart: string, tz: string, quiet: QuietHours): string {
+export function applyQuietHours(
+  dueAt: string,
+  eventStart: string,
+  tz: string,
+  quiet: QuietHours
+): string {
   const local = utcToLocal(dueAt, tz)
   const [qs, qe] = [quiet.start, quiet.end]
-  const inQuiet = qs > qe ? local.time >= qs || local.time < qe : local.time >= qs && local.time < qe
+  const inQuiet =
+    qs > qe
+      ? local.time >= qs || local.time < qe
+      : local.time >= qs && local.time < qe
   if (!inQuiet) return dueAt
   // Quiet period that crosses midnight: times after `start` move to the next morning.
   let targetDay = local.day
@@ -50,7 +58,7 @@ export function planStages(
   days: readonly Interval[],
   now: string,
   tz: string,
-  quiet: QuietHours,
+  quiet: QuietHours
 ): PlannedStage[] {
   if (days.length === 0) return []
   const eventStart = days[0]!.start
@@ -62,20 +70,40 @@ export function planStages(
     const anchors: { at: string; dayIndex: number | null }[] =
       t.anchor === "each_day_start"
         ? days.map((d, i) => ({ at: d.start, dayIndex: i }))
-        : [{ at: t.anchor === "event_start" ? eventStart : eventEnd, dayIndex: null }]
+        : [
+            {
+              at: t.anchor === "event_start" ? eventStart : eventEnd,
+              dayIndex: null,
+            },
+          ]
 
     for (const a of anchors) {
       let dueAt = addMinutesIso(a.at, t.offsetMinutes)
       if (t.kind === "task") {
-        out.push({ templateId: t.id, dayIndex: a.dayIndex, dueAt, status: "open" })
+        out.push({
+          templateId: t.id,
+          dayIndex: a.dayIndex,
+          dueAt,
+          status: "open",
+        })
         continue
       }
       dueAt = applyQuietHours(dueAt, eventStart, tz, quiet)
       if (Date.parse(dueAt) <= Date.parse(now)) {
         // The first stage is the booking confirmation summary: always sent (BR-005-04).
-        out.push({ templateId: t.id, dayIndex: a.dayIndex, dueAt: now, status: t.seq === firstSeq ? "scheduled" : "skipped" })
+        out.push({
+          templateId: t.id,
+          dayIndex: a.dayIndex,
+          dueAt: now,
+          status: t.seq === firstSeq ? "scheduled" : "skipped",
+        })
       } else {
-        out.push({ templateId: t.id, dayIndex: a.dayIndex, dueAt, status: "scheduled" })
+        out.push({
+          templateId: t.id,
+          dayIndex: a.dayIndex,
+          dueAt,
+          status: "scheduled",
+        })
       }
     }
   }
@@ -83,8 +111,15 @@ export function planStages(
 }
 
 /** Tasks blocking checkout: blocks_checkout and not done/overridden (BR-005-05). */
-export function blockingTasks<T extends { kind: StageKind; blocksCheckout: boolean; status: StageStatus }>(
-  stages: readonly T[],
-): T[] {
-  return stages.filter((s) => s.kind === "task" && s.blocksCheckout && s.status !== "done" && s.status !== "overridden" && s.status !== "cancelled")
+export function blockingTasks<
+  T extends { kind: StageKind; blocksCheckout: boolean; status: StageStatus },
+>(stages: readonly T[]): T[] {
+  return stages.filter(
+    (s) =>
+      s.kind === "task" &&
+      s.blocksCheckout &&
+      s.status !== "done" &&
+      s.status !== "overridden" &&
+      s.status !== "cancelled"
+  )
 }

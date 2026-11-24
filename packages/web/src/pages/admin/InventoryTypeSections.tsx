@@ -185,7 +185,8 @@ function ActiveToggle({ type }: { type: EquipmentTypeDetail }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Deactivate {type.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Students can no longer request it and it is removed from new bookings. Open events that use it are flagged for review.
+              Students can no longer request it and it is removed from new
+              bookings. Open events that use it are flagged for review.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -420,9 +421,7 @@ export function StatusHistoryCard({ type }: { type: EquipmentTypeDetail }) {
                         <span className="text-muted-foreground">New</span>
                       )}
                       <span aria-hidden>→</span>
-                      <Badge variant="secondary">
-                        {humanize(h.toStatus)}
-                      </Badge>
+                      <Badge variant="secondary">{humanize(h.toStatus)}</Badge>
                     </span>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">

@@ -4,14 +4,27 @@ import { ConfirmButton } from "@/components/admin/shared"
 import { ErrorAlert, IconTitle, IssueList } from "@/components/common"
 import type { DraftForm } from "@/components/events/draft"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Separator } from "@/components/ui/separator"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import { fmtDays } from "@/lib/format"
 import type { CheckView } from "./useEventCheck"
-import { type EventTypeRow, type SaveMode, type StudioRow, type SubmitState, submitHintOf } from "./rules"
+import {
+  type EventTypeRow,
+  type SaveMode,
+  type StudioRow,
+  type SubmitState,
+  submitHintOf,
+} from "./rules"
 
 interface SummaryAsideProps {
   form: DraftForm
@@ -63,7 +76,10 @@ export function SummaryAside(props: SummaryAsideProps) {
           <Separator />
           <ChecksPanel check={check} />
           {check.soft && !check.hard && (
-            <JustificationField justification={props.justification} setJustification={props.setJustification} />
+            <JustificationField
+              justification={props.justification}
+              setJustification={props.setJustification}
+            />
           )}
           {saveError && <ErrorAlert error={saveError} />}
         </CardContent>
@@ -124,7 +140,11 @@ function RequestSummary({
   )
 }
 
-function EquipmentSummary({ lines }: { lines: { id: string; qty: number; name: string }[] }) {
+function EquipmentSummary({
+  lines,
+}: {
+  lines: { id: string; qty: number; name: string }[]
+}) {
   if (lines.length === 0) return "None"
   return (
     <ul className="flex flex-col gap-1">
@@ -166,7 +186,9 @@ function JustificationField({
   const missing = justification.trim() === "" || undefined
   return (
     <Field data-invalid={missing}>
-      <FieldLabel htmlFor="justification">Justification for exception</FieldLabel>
+      <FieldLabel htmlFor="justification">
+        Justification for exception
+      </FieldLabel>
       <Textarea
         id="justification"
         required
@@ -174,7 +196,9 @@ function JustificationField({
         value={justification}
         onChange={(e) => setJustification(e.target.value)}
       />
-      <FieldDescription>Staff read this when they confirm the request.</FieldDescription>
+      <FieldDescription>
+        Staff read this when they confirm the request.
+      </FieldDescription>
     </Field>
   )
 }
@@ -214,12 +238,27 @@ function SubmitActions({
           onClick={() => onSave("submit")}
         />
       ) : (
-        <SaveChangesButton enabled={canSave} saving={saving} onClick={() => onSave("save")} />
+        <SaveChangesButton
+          enabled={canSave}
+          saving={saving}
+          onClick={() => onSave("save")}
+        />
       )}
       {(isDraft || isNew) && (
-        <SaveDraftButton enabled={canSave} saving={saving} savingMode={savingMode} onClick={() => onSave("save")} />
+        <SaveDraftButton
+          enabled={canSave}
+          saving={saving}
+          savingMode={savingMode}
+          onClick={() => onSave("save")}
+        />
       )}
-      {currentId && isDraft && <DeleteDraftButton removing={removing} saving={saving} onDelete={onDelete} />}
+      {currentId && isDraft && (
+        <DeleteDraftButton
+          removing={removing}
+          saving={saving}
+          onDelete={onDelete}
+        />
+      )}
       {!canSubmit && isDraft && <SubmitHint state={submitState} />}
     </>
   )
@@ -238,7 +277,9 @@ function SubmitButton({
 }) {
   return (
     <Button disabled={!enabled || saving} onClick={onClick}>
-      {saving && savingMode === "submit" && <Spinner data-icon="inline-start" />}
+      {saving && savingMode === "submit" && (
+        <Spinner data-icon="inline-start" />
+      )}
       Submit request
     </Button>
   )
@@ -303,5 +344,9 @@ function DeleteDraftButton({
 }
 
 function SubmitHint({ state }: { state: SubmitState }) {
-  return <p className="text-center text-xs text-muted-foreground">{submitHintOf(state)}</p>
+  return (
+    <p className="text-center text-xs text-muted-foreground">
+      {submitHintOf(state)}
+    </p>
+  )
 }

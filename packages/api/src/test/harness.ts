@@ -16,7 +16,11 @@ export function createHarness() {
   const app = createApp(db)
 
   async function as(emailPrefix: string) {
-    const u = db.select().from(users).where(eq(users.email, `${emailPrefix}@university.edu`)).get()
+    const u = db
+      .select()
+      .from(users)
+      .where(eq(users.email, `${emailPrefix}@university.edu`))
+      .get()
     if (!u) throw new Error(`no seed user ${emailPrefix}`)
     const login = await app.request("/api/auth/dev-login", {
       method: "POST",
@@ -27,7 +31,10 @@ export function createHarness() {
     const call = async (method: string, path: string, body?: unknown) => {
       const res = await app.request(path, {
         method,
-        headers: { cookie, ...(body === undefined ? {} : { "content-type": "application/json" }) },
+        headers: {
+          cookie,
+          ...(body === undefined ? {} : { "content-type": "application/json" }),
+        },
         body: body === undefined ? undefined : JSON.stringify(body),
       })
       const text = await res.text()

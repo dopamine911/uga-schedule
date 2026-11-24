@@ -22,16 +22,28 @@ const clearBody = z.object({ reason: z.string().trim().min(1) })
 /** Holds visible to a viewer: own holds, or holds of requesters of studios they staff (hold.view). */
 function holdRows(db: DB, rows: (typeof holds.$inferSelect)[]) {
   const userIds = [...new Set(rows.map((h) => h.userId))]
-  const eventIds = [...new Set(rows.map((h) => h.eventId).filter((x): x is string => !!x))]
+  const eventIds = [
+    ...new Set(rows.map((h) => h.eventId).filter((x): x is string => !!x)),
+  ]
   const names = new Map(
     userIds.length
-      ? db.select({ id: users.id, displayName: users.displayName }).from(users).where(inArray(users.id, userIds)).all().map((u) => [u.id, u.displayName])
-      : [],
+      ? db
+          .select({ id: users.id, displayName: users.displayName })
+          .from(users)
+          .where(inArray(users.id, userIds))
+          .all()
+          .map((u) => [u.id, u.displayName])
+      : []
   )
   const titles = new Map(
     eventIds.length
-      ? db.select({ id: events.id, title: events.title }).from(events).where(inArray(events.id, eventIds)).all().map((e) => [e.id, e.title])
-      : [],
+      ? db
+          .select({ id: events.id, title: events.title })
+          .from(events)
+          .where(inArray(events.id, eventIds))
+          .all()
+          .map((e) => [e.id, e.title])
+      : []
   )
   return rows.map((h) => ({
     id: h.id,
@@ -61,43 +73,67 @@ function studioStaffRequesterIds(db: DB, user: SessionUser): string[] | null {
         .from(events)
         .where(inArray(events.studioId, studioIds))
         .all()
-        .map((r) => r.requesterId),
+        .map((r) => r.requesterId)
     ),
   ]
 }
 
 export const routes = new Hono<AppEnv>()
-  .get("/", v("query", z.object({ scope: z.enum(["mine", "all"]).default("mine") })), (c) => {
-    const user = requireUser(c)
-    const db = c.var.db
-    const { scope } = c.req.valid("query")
-    if (scope === "mine") {
-      return c.json(holdRows(db, db.select().from(holds).where(eq(holds.userId, user.id)).orderBy(desc(holds.createdAt)).all()))
-    }
-    const scoped = studioStaffRequesterIds(db, user)
-    let rows = db.select().from(holds).orderBy(desc(holds.createdAt)).all()
-    // Unscoped viewers with a studio removed (BR-001-15) don't see holds raised on that studio's events.
-    const excluded = scoped ? [] : deniedStudios(user, "hold.view")
-    if (excluded.length) {
-      const hidden = new Set(
-        db
-          .select({ id: events.id })
-          .from(events)
-          .where(inArray(events.studioId, excluded))
-          .all()
-          .map((e) => e.id),
+  .get(
+    "/",
+    v("query", z.object({ scope: z.enum(["mine", "all"]).default("mine") })),
+    (c) => {
+      const user = requireUser(c)
+      const db = c.var.db
+      const { scope } = c.req.valid("query")
+      if (scope === "mine") {
+        return c.json(
+          holdRows(
+            db,
+            db
+              .select()
+              .from(holds)
+              .where(eq(holds.userId, user.id))
+              .orderBy(desc(holds.createdAt))
+              .all()
+          )
+        )
+      }
+      const scoped = studioStaffRequesterIds(db, user)
+      let rows = db.select().from(holds).orderBy(desc(holds.createdAt)).all()
+      // Unscoped viewers with a studio removed (BR-001-15) don't see holds raised on that studio's events.
+      const excluded = scoped ? [] : deniedStudios(user, "hold.view")
+      if (excluded.length) {
+        const hidden = new Set(
+          db
+            .select({ id: events.id })
+            .from(events)
+            .where(inArray(events.studioId, excluded))
+            .all()
+            .map((e) => e.id)
+        )
+        rows = rows.filter((h) => !h.eventId || !hidden.has(h.eventId))
+      }
+      return c.json(
+        holdRows(
+          db,
+          scoped ? rows.filter((h) => scoped.includes(h.userId)) : rows
+        )
       )
-      rows = rows.filter((h) => !h.eventId || !hidden.has(h.eventId))
     }
-    return c.json(holdRows(db, scoped ? rows.filter((h) => scoped.includes(h.userId)) : rows))
-  })
+  )
   .post("/", v("json", createBody), (c) => {
     const user = requireUser(c)
     const db = c.var.db
     const body = c.req.valid("json")
-    const target = db.select({ id: users.id }).from(users).where(eq(users.id, body.userId)).get()
+    const target = db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, body.userId))
+      .get()
     const ev = body.eventId ? visibleEvent(db, user, body.eventId) : null
-    if (ev && ev.requesterId !== body.userId) throw conflict("NOT_REQUESTER", "That person did not request this event.")
+    if (ev && ev.requesterId !== body.userId)
+      throw conflict("NOT_REQUESTER", "That person did not request this event.")
     if (!can(user, "hold.clear")) {
       // Studio staff may hold only people who have requested one of their studios.
       const studioIds = studiosFor(user, "checkout.perform")
@@ -106,7 +142,12 @@ export const routes = new Hono<AppEnv>()
         db
           .select({ id: events.id })
           .from(events)
-          .where(and(eq(events.requesterId, body.userId), inArray(events.studioId, studioIds)))
+          .where(
+            and(
+              eq(events.requesterId, body.userId),
+              inArray(events.studioId, studioIds)
+            )
+          )
           .get()
       if (!theirs) throw forbidden()
     }
@@ -119,7 +160,7 @@ export const routes = new Hono<AppEnv>()
         source: "staff",
         note: body.note,
         actorId: user.id,
-      }),
+      })
     )
     return c.json(holdRows(db, [hold!])[0]!, 201)
   })
@@ -127,10 +168,19 @@ export const routes = new Hono<AppEnv>()
     const user = requireUser(c)
     const db = c.var.db
     if (!can(user, "hold.clear")) throw forbidden()
-    const hold = db.select().from(holds).where(eq(holds.id, c.req.param("id"))).get()
+    const hold = db
+      .select()
+      .from(holds)
+      .where(eq(holds.id, c.req.param("id")))
+      .get()
     if (!hold) throw notFound("Hold")
-    if (hold.status !== "active") throw conflict("NOT_ACTIVE", "This hold is already cleared.")
+    if (hold.status !== "active")
+      throw conflict("NOT_ACTIVE", "This hold is already cleared.")
     const body = c.req.valid("json")
     db.transaction(() => clearHold(db, hold, user.id, body.reason))
-    return c.json(holdRows(db, [db.select().from(holds).where(eq(holds.id, hold.id)).get()!])[0]!)
+    return c.json(
+      holdRows(db, [
+        db.select().from(holds).where(eq(holds.id, hold.id)).get()!,
+      ])[0]!
+    )
   })

@@ -52,14 +52,36 @@ export function createApp(db: DB) {
   app.use(sessionMiddleware)
   app.route("/api", api)
   app.route("/ics", icsRoutes)
-  app.notFound((c) => c.json<ErrorBody>({ error: { code: "NOT_FOUND", message: "Not found." } }, 404))
+  app.notFound((c) =>
+    c.json<ErrorBody>(
+      { error: { code: "NOT_FOUND", message: "Not found." } },
+      404
+    )
+  )
   app.onError((err, c) => {
     if (err instanceof AppError)
-      return c.json<ErrorBody>({ error: { code: err.code, message: err.message, details: err.details } }, err.status)
+      return c.json<ErrorBody>(
+        {
+          error: { code: err.code, message: err.message, details: err.details },
+        },
+        err.status
+      )
     if (err instanceof ZodError)
-      return c.json<ErrorBody>({ error: { code: "VALIDATION", message: "Some fields are invalid.", details: err.issues } }, 400)
+      return c.json<ErrorBody>(
+        {
+          error: {
+            code: "VALIDATION",
+            message: "Some fields are invalid.",
+            details: err.issues,
+          },
+        },
+        400
+      )
     console.error(err)
-    return c.json<ErrorBody>({ error: { code: "INTERNAL", message: "Something went wrong." } }, 500)
+    return c.json<ErrorBody>(
+      { error: { code: "INTERNAL", message: "Something went wrong." } },
+      500
+    )
   })
   return app
 }

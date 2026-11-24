@@ -45,7 +45,14 @@ const ENTITY_TYPES = [
   "unit",
   "user",
 ] as const
-const EQUIPMENT_MANAGER_TYPES: readonly string[] = ["equipment_class", "equipment_type", "unit", "bulk_stock", "grant", "hold"]
+const EQUIPMENT_MANAGER_TYPES: readonly string[] = [
+  "equipment_class",
+  "equipment_type",
+  "unit",
+  "bulk_stock",
+  "grant",
+  "hold",
+]
 const DEFAULT_LIMIT = 200
 const MAX_LIMIT = 1000
 
@@ -71,20 +78,61 @@ interface Labelled {
 
 /** One batched lookup per entity type that has a human name. Types not listed here have no label. */
 const LABEL_LOOKUPS: Record<string, (db: DB, ids: string[]) => Labelled[]> = {
-  event: (db, ids) => db.select({ id: events.id, label: events.title }).from(events).where(inArray(events.id, ids)).all(),
-  user: (db, ids) => db.select({ id: users.id, label: users.displayName }).from(users).where(inArray(users.id, ids)).all(),
-  studio: (db, ids) => db.select({ id: studios.id, label: studios.name }).from(studios).where(inArray(studios.id, ids)).all(),
+  event: (db, ids) =>
+    db
+      .select({ id: events.id, label: events.title })
+      .from(events)
+      .where(inArray(events.id, ids))
+      .all(),
+  user: (db, ids) =>
+    db
+      .select({ id: users.id, label: users.displayName })
+      .from(users)
+      .where(inArray(users.id, ids))
+      .all(),
+  studio: (db, ids) =>
+    db
+      .select({ id: studios.id, label: studios.name })
+      .from(studios)
+      .where(inArray(studios.id, ids))
+      .all(),
   equipment_type: (db, ids) =>
-    db.select({ id: equipmentTypes.id, label: equipmentTypes.name }).from(equipmentTypes).where(inArray(equipmentTypes.id, ids)).all(),
+    db
+      .select({ id: equipmentTypes.id, label: equipmentTypes.name })
+      .from(equipmentTypes)
+      .where(inArray(equipmentTypes.id, ids))
+      .all(),
   equipment_class: (db, ids) =>
-    db.select({ id: equipmentClasses.id, label: equipmentClasses.name }).from(equipmentClasses).where(inArray(equipmentClasses.id, ids)).all(),
+    db
+      .select({ id: equipmentClasses.id, label: equipmentClasses.name })
+      .from(equipmentClasses)
+      .where(inArray(equipmentClasses.id, ids))
+      .all(),
   unit: (db, ids) =>
-    db.select({ id: equipmentUnits.id, label: equipmentUnits.assetTag }).from(equipmentUnits).where(inArray(equipmentUnits.id, ids)).all(),
-  event_type: (db, ids) => db.select({ id: eventTypes.id, label: eventTypes.name }).from(eventTypes).where(inArray(eventTypes.id, ids)).all(),
-  level: (db, ids) => db.select({ id: levels.id, label: levels.name }).from(levels).where(inArray(levels.id, ids)).all(),
+    db
+      .select({ id: equipmentUnits.id, label: equipmentUnits.assetTag })
+      .from(equipmentUnits)
+      .where(inArray(equipmentUnits.id, ids))
+      .all(),
+  event_type: (db, ids) =>
+    db
+      .select({ id: eventTypes.id, label: eventTypes.name })
+      .from(eventTypes)
+      .where(inArray(eventTypes.id, ids))
+      .all(),
+  level: (db, ids) =>
+    db
+      .select({ id: levels.id, label: levels.name })
+      .from(levels)
+      .where(inArray(levels.id, ids))
+      .all(),
   course: (db, ids) =>
     db
-      .select({ id: courseOfferings.id, label: courseOfferings.courseCode, term: courseOfferings.term })
+      .select({
+        id: courseOfferings.id,
+        label: courseOfferings.courseCode,
+        term: courseOfferings.term,
+      })
       .from(courseOfferings)
       .where(inArray(courseOfferings.id, ids))
       .all()
@@ -98,11 +146,31 @@ function csvCell(value: unknown): string {
 }
 
 function toCsv(rows: readonly AuditRow[]): string {
-  const header = ["at", "actor", "action", "entity_type", "entity_id", "entity_label", "before", "after", "reason"]
+  const header = [
+    "at",
+    "actor",
+    "action",
+    "entity_type",
+    "entity_id",
+    "entity_label",
+    "before",
+    "after",
+    "reason",
+  ]
   const lines = rows.map((r) =>
-    [r.at, r.actorName ?? "", r.action, r.entityType, r.entityId, r.entityLabel ?? "", r.before, r.after, r.reason]
+    [
+      r.at,
+      r.actorName ?? "",
+      r.action,
+      r.entityType,
+      r.entityId,
+      r.entityLabel ?? "",
+      r.before,
+      r.after,
+      r.reason,
+    ]
       .map(csvCell)
-      .join(","),
+      .join(",")
   )
   return [header.join(","), ...lines].join("\n") + "\n"
 }
@@ -118,7 +186,10 @@ interface Scope {
 }
 
 /** Resolves entity names with one query per entity type present in `rows` (never one per row). */
-function entityLabels(db: DB, rows: readonly { entityType: string; entityId: string }[]): Map<string, string> {
+function entityLabels(
+  db: DB,
+  rows: readonly { entityType: string; entityId: string }[]
+): Map<string, string> {
   const idsByType = new Map<string, Set<string>>()
   for (const r of rows) {
     if (!(r.entityType in LABEL_LOOKUPS)) continue
@@ -128,7 +199,8 @@ function entityLabels(db: DB, rows: readonly { entityType: string; entityId: str
   }
   const labels = new Map<string, string>()
   for (const [type, ids] of idsByType) {
-    for (const hit of LABEL_LOOKUPS[type]!(db, [...ids])) labels.set(`${type}:${hit.id}`, hit.label)
+    for (const hit of LABEL_LOOKUPS[type]!(db, [...ids]))
+      labels.set(`${type}:${hit.id}`, hit.label)
   }
   return labels
 }
@@ -151,7 +223,9 @@ function search(db: DB, filter: Scope, limit: number): AuditRow[] {
     .leftJoin(users, eq(users.id, auditLog.actorId))
     .where(
       and(
-        filter.entityType ? eq(auditLog.entityType, filter.entityType) : undefined,
+        filter.entityType
+          ? eq(auditLog.entityType, filter.entityType)
+          : undefined,
         filter.entityId ? eq(auditLog.entityId, filter.entityId) : undefined,
         filter.action
           ? sql`${auditLog.action} like ${`%${filter.action.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`} escape '\\'`
@@ -159,26 +233,40 @@ function search(db: DB, filter: Scope, limit: number): AuditRow[] {
         filter.actorId ? eq(auditLog.actorId, filter.actorId) : undefined,
         filter.from ? gte(auditLog.at, filter.from) : undefined,
         filter.to ? lte(auditLog.at, filter.to) : undefined,
-        filter.restrictTo ? inArray(auditLog.entityType, [...filter.restrictTo]) : undefined,
-      ),
+        filter.restrictTo
+          ? inArray(auditLog.entityType, [...filter.restrictTo])
+          : undefined
+      )
     )
     .orderBy(desc(auditLog.at), desc(auditLog.id))
     .limit(limit)
     .all()
   const labels = entityLabels(db, rows)
-  return rows.map((r) => ({ ...r, entityLabel: labels.get(`${r.entityType}:${r.entityId}`) ?? null }))
+  return rows.map((r) => ({
+    ...r,
+    entityLabel: labels.get(`${r.entityType}:${r.entityId}`) ?? null,
+  }))
 }
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/
 const dateOrInstant = z
   .string()
-  .refine((s) => !Number.isNaN(Date.parse(s)), "Expected an ISO date or instant.")
+  .refine(
+    (s) => !Number.isNaN(Date.parse(s)),
+    "Expected an ISO date or instant."
+  )
   .optional()
 
 /** Bound on the `at` column (UTC ISO instants). A bare date covers that whole UTC day. */
-function bound(value: string | undefined, edge: "start" | "end"): string | undefined {
+function bound(
+  value: string | undefined,
+  edge: "start" | "end"
+): string | undefined {
   if (!value) return undefined
-  if (DATE_ONLY.test(value)) return edge === "start" ? `${value}T00:00:00.000Z` : `${value}T23:59:59.999Z`
+  if (DATE_ONLY.test(value))
+    return edge === "start"
+      ? `${value}T00:00:00.000Z`
+      : `${value}T23:59:59.999Z`
   return new Date(value).toISOString()
 }
 
@@ -195,7 +283,8 @@ const filterQuery = z.object({
 /** Admins see everything; Equipment Managers only inventory-side entries. Throws when they ask for other types. */
 function scopeFor(c: Context<AppEnv>, q: z.infer<typeof filterQuery>): Scope {
   const admin = authorize(c, "audit.view").roles.some((r) => r.role === "ADMIN")
-  if (!admin && q.entityType && !EQUIPMENT_MANAGER_TYPES.includes(q.entityType)) throw forbidden()
+  if (!admin && q.entityType && !EQUIPMENT_MANAGER_TYPES.includes(q.entityType))
+    throw forbidden()
   return {
     entityType: q.entityType,
     entityId: q.entityId,
@@ -214,8 +303,12 @@ export const routes = new Hono<AppEnv>()
   })
   /** Entity types the caller may filter by. */
   .get("/entity-types", (c) => {
-    const admin = authorize(c, "audit.view").roles.some((r) => r.role === "ADMIN")
-    const types: string[] = admin ? [...ENTITY_TYPES] : ENTITY_TYPES.filter((t) => EQUIPMENT_MANAGER_TYPES.includes(t))
+    const admin = authorize(c, "audit.view").roles.some(
+      (r) => r.role === "ADMIN"
+    )
+    const types: string[] = admin
+      ? [...ENTITY_TYPES]
+      : ENTITY_TYPES.filter((t) => EQUIPMENT_MANAGER_TYPES.includes(t))
     return c.json(types)
   })
   .get("/export.csv", v("query", filterQuery), (c) => {

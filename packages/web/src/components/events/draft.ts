@@ -1,4 +1,9 @@
-import { type DayInput, isLocalDate, isLocalTime, minutesOf } from "@studio/domain"
+import {
+  type DayInput,
+  isLocalDate,
+  isLocalTime,
+  minutesOf,
+} from "@studio/domain"
 
 // Form model for the event request page. Dates/times stay as calendar strings; the API resolves them in campus tz.
 
@@ -51,7 +56,10 @@ export function addDays(day: string, n: number): string {
 /** Resizes the per-day time rows, copying the last row's times into new days. */
 export function withNumDays(form: DraftForm, n: number): DraftForm {
   const last = form.times[form.times.length - 1] ?? DEFAULT_TIMES
-  const times = Array.from({ length: n }, (_, i) => form.times[i] ?? { ...last })
+  const times = Array.from(
+    { length: n },
+    (_, i) => form.times[i] ?? { ...last }
+  )
   return { ...form, times }
 }
 
@@ -59,17 +67,28 @@ export function isScheduleComplete(form: DraftForm): boolean {
   return (
     isLocalDate(form.firstDay) &&
     form.times.length > 0 &&
-    form.times.every((t) => isLocalTime(t.startTime) && isLocalTime(t.endTime) && minutesOf(t.endTime) > minutesOf(t.startTime))
+    form.times.every(
+      (t) =>
+        isLocalTime(t.startTime) &&
+        isLocalTime(t.endTime) &&
+        minutesOf(t.endTime) > minutesOf(t.startTime)
+    )
   )
 }
 
 /** Calendar days of the request, or [] while the schedule is incomplete. */
 export function daysOf(form: DraftForm): DayInput[] {
   if (!isScheduleComplete(form)) return []
-  return form.times.map((t, i) => ({ day: addDays(form.firstDay, i), startTime: t.startTime, endTime: t.endTime }))
+  return form.times.map((t, i) => ({
+    day: addDays(form.firstDay, i),
+    startTime: t.startTime,
+    endTime: t.endTime,
+  }))
 }
 
-export function linesOf(form: DraftForm): { equipmentTypeId: string; qty: number }[] {
+export function linesOf(
+  form: DraftForm
+): { equipmentTypeId: string; qty: number }[] {
   return Object.entries(form.lines)
     .filter(([, qty]) => qty > 0)
     .map(([equipmentTypeId, qty]) => ({ equipmentTypeId, qty }))

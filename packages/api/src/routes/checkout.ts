@@ -71,7 +71,7 @@ const checkinBody = z.object({
       qtyDamaged: z.number().int().min(0).optional(),
       qtyMissing: z.number().int().min(0).optional(),
       notes: z.string().optional(),
-    }),
+    })
   ),
 })
 
@@ -79,36 +79,67 @@ const checkinBody = z.object({
 function noShowAt(db: DB, ev: EventRow): string | null {
   const span = eventSpan(db, ev.id)
   if (!span) return null
-  return new Date(Date.parse(span.start) + getPolicies(db).NO_SHOW_GRACE_MINUTES * 60_000).toISOString()
+  return new Date(
+    Date.parse(span.start) + getPolicies(db).NO_SHOW_GRACE_MINUTES * 60_000
+  ).toISOString()
 }
 
 /** BR-007-02 pre-checks. Overridable blockers can be waived with a reason; the rest cannot. */
 function blockersFor(db: DB, ev: EventRow): Blocker[] {
   const out: Blocker[] = []
-  if (ev.state !== "Confirmed") out.push({ code: "NOT_CONFIRMED", message: `The event is ${ev.state}.`, overridable: false })
+  if (ev.state !== "Confirmed")
+    out.push({
+      code: "NOT_CONFIRMED",
+      message: `The event is ${ev.state}.`,
+      overridable: false,
+    })
   if (ev.needsReview)
-    out.push({ code: "NEEDS_REVIEW", message: "Resolve the review flag on this request first.", overridable: false })
+    out.push({
+      code: "NEEDS_REVIEW",
+      message: "Resolve the review flag on this request first.",
+      overridable: false,
+    })
   for (const s of blockingTasks(stagesOf(db, ev.id)))
-    out.push({ code: "TASK_BLOCKING", message: `Task not complete: ${s.name}`, overridable: true })
+    out.push({
+      code: "TASK_BLOCKING",
+      message: `Task not complete: ${s.name}`,
+      overridable: true,
+    })
 
   const issues: Issue[] = checkDraft(db, draftOf(db, ev.id), ev.id)
   for (const i of issues)
     if (i.code === "LEVEL_STUDIO" || i.code === "LEVEL_EQUIPMENT")
       out.push({ code: i.code, message: i.message, overridable: false })
   if (hasActiveHold(db, ev.requesterId))
-    out.push({ code: "HOLD_ACTIVE", message: "The requester has an active hold. Clear it under Holds first.", overridable: false })
+    out.push({
+      code: "HOLD_ACTIVE",
+      message: "The requester has an active hold. Clear it under Holds first.",
+      overridable: false,
+    })
 
   const opens = pickupOpensAt(db, ev)
   if (opens && Date.parse(now()) < Date.parse(opens))
-    out.push({ code: "PICKUP_NOT_OPEN", message: `Pickup opens ${localLabel(opens)}.`, overridable: false })
+    out.push({
+      code: "PICKUP_NOT_OPEN",
+      message: `Pickup opens ${localLabel(opens)}.`,
+      overridable: false,
+    })
   const cutoff = noShowAt(db, ev)
   if (cutoff && Date.parse(now()) > Date.parse(cutoff))
-    out.push({ code: "NO_SHOW", message: "The start grace period has passed; the event is a no-show.", overridable: false })
+    out.push({
+      code: "NO_SHOW",
+      message: "The start grace period has passed; the event is a no-show.",
+      overridable: false,
+    })
   return out
 }
 
 function blockedError(blockers: readonly Blocker[]) {
-  return conflict("CHECKOUT_BLOCKED", blockers.map((b) => b.message).join(" "), { blockers })
+  return conflict(
+    "CHECKOUT_BLOCKED",
+    blockers.map((b) => b.message).join(" "),
+    { blockers }
+  )
 }
 
 function linesOf(db: DB, eventId: string) {
@@ -122,7 +153,10 @@ function linesOf(db: DB, eventId: string) {
       tracking: equipmentTypes.tracking,
     })
     .from(equipmentLines)
-    .innerJoin(equipmentTypes, eq(equipmentTypes.id, equipmentLines.equipmentTypeId))
+    .innerJoin(
+      equipmentTypes,
+      eq(equipmentTypes.id, equipmentLines.equipmentTypeId)
+    )
     .where(eq(equipmentLines.eventId, eventId))
     .all()
 }
@@ -141,15 +175,34 @@ export const routes = new Hono<AppEnv>()
     const typeIds = [...new Set(lines.map((l) => l.equipmentTypeId))]
     const units = typeIds.length
       ? db
-          .select({ id: equipmentUnits.id, typeId: equipmentUnits.typeId, assetTag: equipmentUnits.assetTag })
+          .select({
+            id: equipmentUnits.id,
+            typeId: equipmentUnits.typeId,
+            assetTag: equipmentUnits.assetTag,
+          })
           .from(equipmentUnits)
-          .where(and(inArray(equipmentUnits.typeId, typeIds), eq(equipmentUnits.status, "available")))
+          .where(
+            and(
+              inArray(equipmentUnits.typeId, typeIds),
+              eq(equipmentUnits.status, "available")
+            )
+          )
           .all()
       : []
-    const stock = typeIds.length ? db.select().from(bulkStock).where(inArray(bulkStock.typeId, typeIds)).all() : []
+    const stock = typeIds.length
+      ? db
+          .select()
+          .from(bulkStock)
+          .where(inArray(bulkStock.typeId, typeIds))
+          .all()
+      : []
     const typeNames = new Map(lines.map((l) => [l.equipmentTypeId, l.typeName]))
     const assetTags = new Map(
-      db.select({ id: equipmentUnits.id, assetTag: equipmentUnits.assetTag }).from(equipmentUnits).all().map((u) => [u.id, u.assetTag]),
+      db
+        .select({ id: equipmentUnits.id, assetTag: equipmentUnits.assetTag })
+        .from(equipmentUnits)
+        .all()
+        .map((u) => [u.id, u.assetTag])
     )
     return c.json({
       state: ev.state,
@@ -164,9 +217,15 @@ export const routes = new Hono<AppEnv>()
         qty: l.qty,
         candidates:
           l.tracking === "serialized"
-            ? units.filter((u) => u.typeId === l.equipmentTypeId).map((u) => ({ unitId: u.id, assetTag: u.assetTag }))
+            ? units
+                .filter((u) => u.typeId === l.equipmentTypeId)
+                .map((u) => ({ unitId: u.id, assetTag: u.assetTag }))
             : [],
-        bulkAvailable: l.tracking === "bulk" ? (stock.find((s) => s.typeId === l.equipmentTypeId)?.qtyAvailable ?? 0) : null,
+        bulkAvailable:
+          l.tracking === "bulk"
+            ? (stock.find((s) => s.typeId === l.equipmentTypeId)
+                ?.qtyAvailable ?? 0)
+            : null,
       })),
       outstanding: recordsOf(db, ev.id)
         .filter((r) => outstandingQty(r) > 0)
@@ -199,10 +258,16 @@ export const routes = new Hono<AppEnv>()
       if (openTasks.length) {
         const reason = body.taskOverrideReason?.trim() ?? ""
         if (!reason) throw blockedError(blockers)
-        if (!allowed(user, "stage.override_block", current.studioId)) throw forbidden()
+        if (!allowed(user, "stage.override_block", current.studioId))
+          throw forbidden()
         for (const s of openTasks) {
           db.update(stageInstances)
-            .set({ status: "overridden", overrideReason: reason, completedBy: user.id, completedAt: at })
+            .set({
+              status: "overridden",
+              overrideReason: reason,
+              completedBy: user.id,
+              completedAt: at,
+            })
             .where(eq(stageInstances.id, s.id))
             .run()
           audit(db, {
@@ -221,7 +286,8 @@ export const routes = new Hono<AppEnv>()
       const dueAt = returnDueAt(db, current)
       const byLine = new Map(body.lines.map((l) => [l.lineId, l] as const))
       for (const id of byLine.keys())
-        if (!lines.some((x) => x.id === id)) throw badRequest("UNKNOWN_LINE", "Unknown equipment line.")
+        if (!lines.some((x) => x.id === id))
+          throw badRequest("UNKNOWN_LINE", "Unknown equipment line.")
 
       const receipt: string[] = []
       for (const line of lines) {
@@ -229,14 +295,28 @@ export const routes = new Hono<AppEnv>()
         let fulfilled = 0
         if (line.tracking === "serialized") {
           const unitIds = [...new Set(input?.unitIds ?? [])]
-          if (unitIds.length > line.qty) throw badRequest("TOO_MANY_UNITS", `${line.typeName}: ${line.qty} requested.`)
+          if (unitIds.length > line.qty)
+            throw badRequest(
+              "TOO_MANY_UNITS",
+              `${line.typeName}: ${line.qty} requested.`
+            )
           for (const unitId of unitIds) {
-            const unit = db.select().from(equipmentUnits).where(eq(equipmentUnits.id, unitId)).get()
+            const unit = db
+              .select()
+              .from(equipmentUnits)
+              .where(eq(equipmentUnits.id, unitId))
+              .get()
             if (!unit) throw badRequest("UNKNOWN_UNIT", "Unknown unit.")
             if (unit.typeId !== line.equipmentTypeId)
-              throw badRequest("UNIT_TYPE_MISMATCH", `${unit.assetTag} is not a ${line.typeName}.`)
+              throw badRequest(
+                "UNIT_TYPE_MISMATCH",
+                `${unit.assetTag} is not a ${line.typeName}.`
+              )
             if (unit.status !== "available")
-              throw conflict("UNIT_UNAVAILABLE", `${unit.assetTag} is ${unit.status.replace("_", " ")}.`)
+              throw conflict(
+                "UNIT_UNAVAILABLE",
+                `${unit.assetTag} is ${unit.status.replace("_", " ")}.`
+              )
             db.insert(checkoutRecords)
               .values({
                 eventId: current.id,
@@ -249,16 +329,34 @@ export const routes = new Hono<AppEnv>()
                 dueAt,
               })
               .run()
-            setUnitStatus(db, unit, "in_use", user.id, current.id, "checked out")
+            setUnitStatus(
+              db,
+              unit,
+              "in_use",
+              user.id,
+              current.id,
+              "checked out"
+            )
             receipt.push(`${line.typeName} ${unit.assetTag}`)
           }
           fulfilled = unitIds.length
         } else {
           const qty = input?.qty ?? 0
-          if (qty > line.qty) throw badRequest("TOO_MANY_UNITS", `${line.typeName}: ${line.qty} requested.`)
-          const stock = db.select().from(bulkStock).where(eq(bulkStock.typeId, line.equipmentTypeId)).get()
+          if (qty > line.qty)
+            throw badRequest(
+              "TOO_MANY_UNITS",
+              `${line.typeName}: ${line.qty} requested.`
+            )
+          const stock = db
+            .select()
+            .from(bulkStock)
+            .where(eq(bulkStock.typeId, line.equipmentTypeId))
+            .get()
           if (qty > (stock?.qtyAvailable ?? 0))
-            throw conflict("STOCK_SHORT", `${line.typeName}: ${stock?.qtyAvailable ?? 0} available.`)
+            throw conflict(
+              "STOCK_SHORT",
+              `${line.typeName}: ${stock?.qtyAvailable ?? 0} available.`
+            )
           if (qty > 0) {
             db.insert(checkoutRecords)
               .values({
@@ -271,7 +369,16 @@ export const routes = new Hono<AppEnv>()
                 dueAt,
               })
               .run()
-            moveBulk(db, line.equipmentTypeId, "qtyAvailable", "qtyInUse", qty, user.id, current.id, "checked out")
+            moveBulk(
+              db,
+              line.equipmentTypeId,
+              "qtyAvailable",
+              "qtyInUse",
+              qty,
+              user.id,
+              current.id,
+              "checked out"
+            )
             receipt.push(`${line.typeName} ×${qty}`)
           }
           fulfilled = qty
@@ -281,17 +388,30 @@ export const routes = new Hono<AppEnv>()
         db.update(equipmentLines)
           .set({
             qty: fulfilled,
-            note: unfilled > 0 ? `Unfilled ${unfilled}: ${input?.unfilledReason ?? "not provided"}` : line.note,
+            note:
+              unfilled > 0
+                ? `Unfilled ${unfilled}: ${input?.unfilledReason ?? "not provided"}`
+                : line.note,
           })
           .where(eq(equipmentLines.id, line.id))
           .run()
       }
 
       db.insert(acknowledgements)
-        .values({ eventId: current.id, userId: current.requesterId, termsVersion: config.termsVersion })
+        .values({
+          eventId: current.id,
+          userId: current.requesterId,
+          termsVersion: config.termsVersion,
+        })
         .run()
       const started = moveEvent(db, current, "start", user.id, {}, "checkout")
-      audit(db, { actorId: user.id, action: "checkout.complete", entityType: "event", entityId: current.id, after: { dueAt } })
+      audit(db, {
+        actorId: user.id,
+        action: "checkout.complete",
+        entityType: "event",
+        entityId: current.id,
+        after: { dueAt },
+      })
       notify(db, {
         code: "CHECKOUT_RECEIPT",
         to: [current.requesterId],
@@ -300,7 +420,12 @@ export const routes = new Hono<AppEnv>()
         body: `${receipt.length ? receipt.join(", ") : "No equipment"}. Return by ${localLabel(dueAt)}.`,
         key: `CHECKOUT_RECEIPT:${current.id}`,
       })
-      return { eventId: started.id, state: started.state, dueAt, checkedOut: receipt.length }
+      return {
+        eventId: started.id,
+        state: started.state,
+        dueAt,
+        checkedOut: receipt.length,
+      }
     })
     return c.json(out)
   })
@@ -311,19 +436,32 @@ export const routes = new Hono<AppEnv>()
     const ev = visibleEvent(db, user, c.req.param("eventId"))
     requireCheckout(user, ev)
     if (ev.state !== "InProgress" && ev.state !== "PostEvent")
-      throw conflict("INVALID_STATE", `Check-in is not available while the event is ${ev.state}.`)
+      throw conflict(
+        "INVALID_STATE",
+        `Check-in is not available while the event is ${ev.state}.`
+      )
     const out = db.transaction(() => {
       const at = now()
       const policies = getPolicies(db)
       const byId = new Map(recordsOf(db, ev.id).map((r) => [r.id, r]))
-      const types = new Map(db.select().from(equipmentTypes).all().map((t) => [t.id, t]))
+      const types = new Map(
+        db
+          .select()
+          .from(equipmentTypes)
+          .all()
+          .map((t) => [t.id, t])
+      )
       let lateDue: string | null = null
 
       for (const item of body.items) {
         const r = byId.get(item.recordId)
         if (!r) throw notFound("Checkout record")
         const outstanding = outstandingQty(r)
-        if (outstanding === 0) throw conflict("ALREADY_RETURNED", "This item has already been checked in.")
+        if (outstanding === 0)
+          throw conflict(
+            "ALREADY_RETURNED",
+            "This item has already been checked in."
+          )
         const type = types.get(r.equipmentTypeId)!
         const notes = item.notes?.trim() ?? ""
 
@@ -332,7 +470,11 @@ export const routes = new Hono<AppEnv>()
         let missing: number
         let condition: "ok" | "damaged" | "missing"
         if (type.tracking === "serialized") {
-          if (!item.condition) throw badRequest("CONDITION_REQUIRED", "Choose a condition for each unit.")
+          if (!item.condition)
+            throw badRequest(
+              "CONDITION_REQUIRED",
+              "Choose a condition for each unit."
+            )
           condition = item.condition
           ok = condition === "ok" ? 1 : 0
           damaged = condition === "damaged" ? 1 : 0
@@ -342,20 +484,55 @@ export const routes = new Hono<AppEnv>()
           damaged = item.qtyDamaged ?? 0
           missing = item.qtyMissing ?? 0
           if (ok + damaged + missing !== outstanding)
-            throw badRequest("QTY_MISMATCH", `${type.name}: ok + damaged + missing must equal the ${outstanding} still out.`)
+            throw badRequest(
+              "QTY_MISMATCH",
+              `${type.name}: ok + damaged + missing must equal the ${outstanding} still out.`
+            )
           condition = damaged > 0 ? "damaged" : ok > 0 ? "ok" : "missing"
         }
-        if (damaged > 0 && !notes) throw badRequest("NOTES_REQUIRED", "Damaged items need a note.")
+        if (damaged > 0 && !notes)
+          throw badRequest("NOTES_REQUIRED", "Damaged items need a note.")
 
         const returned = ok + damaged
         const late = returned > 0 && at > r.dueAt
         if (type.tracking === "serialized") {
-          const unit = db.select().from(equipmentUnits).where(eq(equipmentUnits.id, r.unitId!)).get()!
-          if (ok) setUnitStatus(db, unit, "available", user.id, ev.id, "checked in")
-          if (damaged) setUnitStatus(db, unit, "damaged", user.id, ev.id, "checked in damaged")
+          const unit = db
+            .select()
+            .from(equipmentUnits)
+            .where(eq(equipmentUnits.id, r.unitId!))
+            .get()!
+          if (ok)
+            setUnitStatus(db, unit, "available", user.id, ev.id, "checked in")
+          if (damaged)
+            setUnitStatus(
+              db,
+              unit,
+              "damaged",
+              user.id,
+              ev.id,
+              "checked in damaged"
+            )
         } else {
-          moveBulk(db, type.id, "qtyInUse", "qtyAvailable", ok, user.id, ev.id, "checked in")
-          moveBulk(db, type.id, "qtyInUse", "qtyDamaged", damaged, user.id, ev.id, "checked in damaged")
+          moveBulk(
+            db,
+            type.id,
+            "qtyInUse",
+            "qtyAvailable",
+            ok,
+            user.id,
+            ev.id,
+            "checked in"
+          )
+          moveBulk(
+            db,
+            type.id,
+            "qtyInUse",
+            "qtyDamaged",
+            damaged,
+            user.id,
+            ev.id,
+            "checked in damaged"
+          )
         }
 
         const updated = db

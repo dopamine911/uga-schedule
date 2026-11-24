@@ -60,13 +60,7 @@ export function CheckinReportCard({
   )
 }
 
-function CheckinItemsTable({
-  items,
-  tz,
-}: {
-  items: ReportItem[]
-  tz: string
-}) {
+function CheckinItemsTable({ items, tz }: { items: ReportItem[]; tz: string }) {
   return (
     <Table>
       <TableHeader>
@@ -141,13 +135,7 @@ function CheckinResultCell({ row: r }: { row: ReportItem }) {
   )
 }
 
-function CheckinHoldsTable({
-  holds,
-  tz,
-}: {
-  holds: ReportHold[]
-  tz: string
-}) {
+function CheckinHoldsTable({ holds, tz }: { holds: ReportHold[]; tz: string }) {
   return (
     <Table>
       <TableHeader>
