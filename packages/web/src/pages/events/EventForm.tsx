@@ -1,5 +1,6 @@
 import { utcToLocal } from "@studio/domain"
 import { useQuery } from "@tanstack/react-query"
+import { useState } from "react"
 import { useParams } from "react-router"
 import { EmptyState, PageHeader, QueryView } from "@/components/common"
 import { useStudioAvailability } from "@/components/events/DayTimePicker"
@@ -119,8 +120,10 @@ function EventForm({
     setCreatedId,
   })
 
-  // Calendar "today" in campus time, read on each render as before.
-  const today = utcToLocal(new Date().toISOString(), tz).day
+  // Calendar "today" in campus time. The instant is read once per mount (render must stay pure);
+  // the day is re-derived if the campus time zone arrives after the first render.
+  const [openedAt] = useState(() => new Date().toISOString())
+  const today = utcToLocal(openedAt, tz).day
   const days = daysOf(form)
   const scheduleComplete = isScheduleComplete(form)
   const sponsorId = form.sponsorId || null

@@ -43,11 +43,17 @@ The **clock button** in the header is available in dev mode only. It moves time 
 ## Checks
 
 ```sh
-pnpm test        # domain unit tests + API integration tests
+pnpm check         # everything below except doctor, in order
+pnpm lint          # oxlint over all packages (.oxlintrc.json); warnings fail
+pnpm lint:fix
+pnpm format        # oxfmt, writes files (.oxfmtrc.json; also sorts Tailwind classes)
+pnpm format:check
 pnpm typecheck
-pnpm --filter @studio/web lint
-pnpm doctor      # React Doctor scan of packages/web (pinned in devDependencies)
+pnpm test          # domain unit tests + API integration tests
+pnpm doctor        # React Doctor scan of packages/web (pinned in devDependencies)
 ```
+
+Lint and format configs live at the repo root and cover every package. oxlint doesn't flag undefined names in TypeScript; `pnpm typecheck` does.
 
 React Doctor also runs on every pull request and on pushes to `main` (`.github/workflows/react-doctor.yml`). It comments with new findings and never fails the check; set `blocking` in that file to gate on them.
 
