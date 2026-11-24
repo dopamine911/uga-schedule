@@ -673,3 +673,294 @@ describe("calendar feed access (BR-009-06, BR-001-09)", () => {
     expect((await h.app.request(path)).status).toBe(404)
   })
 })
+
+describe("clearing holds (BR-007-11)", () => {
+  const holdsOf = (h: Harness, userId: string) =>
+    h.db.select().from(s.holds).where(eq(s.holds.userId, userId)).all()
+  const reviewReasonsOfEpisode4 = (h: Harness) =>
+    h.db
+      .select()
+      .from(s.events)
+      .where(eq(s.events.title, "Episode 4: Campus Food"))
+      .get()!.reviewReasons
+  const placeHold = async (h: Harness, userId: string, note: string) => {
+    const placed = await (
+      await h.as("sam.staff")
+    ).post("/api/holds", {
+      userId,
+      note,
+    })
+    expect(placed.status).toBe(201)
+    return placed.body.id as string
+  }
+
+  it("lets only equipment managers and admins clear a hold", async () => {
+    const h = createHarness()
+    const i = ids(h)
+    const holdId = await placeHold(h, i.alice, "Left the booth unlocked")
+    const path = `/api/holds/${holdId}/clear`
+    const reason = { reason: "Spoke with the student" }
+
+    // The student under the hold, the staff member who placed it, and her sponsor may not lift it.
+    for (const who of ["alice.student", "sam.staff", "priya.patel"]) {
+      const res = await (await h.as(who)).post(path, reason)
+      expect(res.status, who).toBe(403)
+    }
+    expect(holdsOf(h, i.alice).map((x) => x.status)).toEqual(["active"])
+
+    const eli = await h.as("eli.manager")
+    expect((await eli.post(path, reason)).status).toBe(200)
+    expect(holdsOf(h, i.alice)).toMatchObject([
+      {
+        status: "cleared",
+        clearedBy: eli.user.id,
+        clearedReason: "Spoke with the student",
+      },
+    ])
+    const again = await (await h.as("ada.admin")).post(path, reason)
+    expect(again.status).toBe(409)
+    expect(again.body.error.code).toBe("NOT_ACTIVE")
+  })
+
+  it("drops HOLD_ACTIVE from the student's requests only once her last hold clears", async () => {
+    const h = createHarness()
+    const i = ids(h)
+    pinNoon()
+    const first = await placeHold(h, i.alice, "Left the booth unlocked")
+    const second = await placeHold(h, i.alice, "Returned a cable damaged")
+    expect(reviewReasonsOfEpisode4(h)).toContain("HOLD_ACTIVE")
+
+    const eli = await h.as("eli.manager")
+    const clear = (id: string) =>
+      eli.post(`/api/holds/${id}/clear`, { reason: "Resolved" })
+    expect((await clear(first)).status).toBe(200)
+    expect(reviewReasonsOfEpisode4(h)).toContain("HOLD_ACTIVE")
+
+    expect((await clear(second)).status).toBe(200)
+    expect(reviewReasonsOfEpisode4(h)).not.toContain("HOLD_ACTIVE")
+    const alice = await h.as("alice.student")
+    const next = await alice.post(
+      "/api/events",
+      podcastDraft(i, dayPlus(today(), 12), "10:00", "11:00", "Next")
+    )
+    expect(
+      (await alice.post(`/api/events/${next.body.id}/submit`, {})).status
+    ).toBe(200)
+  })
+})
+
+describe("checkout rejects the wrong unit (BR-007-04)", () => {
+  /** A confirmed podcast (2 × SM7B, 2 × XLR) at its pickup time, with sam's checkout view. */
+  async function atPickup(h: Harness) {
+    pinNoon()
+    const day = dayPlus(today(), 5)
+    const id = await confirmed(h, day)
+    setNow(at(day, "13:45"))
+    const sam = await h.as("sam.staff")
+    const view = await sam.get(`/api/checkout/${id}`)
+    expect(view.status).toBe(200)
+    const lineOf = (typeId: string) =>
+      view.body.lines.find(
+        (l: { equipmentTypeId: string }) => l.equipmentTypeId === typeId
+      ).lineId as string
+    return { id, sam, lineOf }
+  }
+  const unitsOf = (h: Harness, typeId: string) =>
+    h.db
+      .select()
+      .from(s.equipmentUnits)
+      .where(eq(s.equipmentUnits.typeId, typeId))
+      .all()
+  const unitById = (h: Harness, id: string) =>
+    h.db
+      .select()
+      .from(s.equipmentUnits)
+      .where(eq(s.equipmentUnits.id, id))
+      .get()!
+  const nothingCheckedOut = async (h: Harness, sam: Client, id: string) => {
+    expect((await sam.get(`/api/events/${id}`)).body.state).toBe("Confirmed")
+    expect(
+      h.db
+        .select()
+        .from(s.checkoutRecords)
+        .where(eq(s.checkoutRecords.eventId, id))
+        .all()
+    ).toEqual([])
+  }
+
+  it("refuses a unit of another equipment type on a line", async () => {
+    const h = createHarness()
+    const i = ids(h)
+    const { id, sam, lineOf } = await atPickup(h)
+    const light = unitsOf(h, i.aputure)[0]!
+
+    const res = await sam.post(`/api/checkout/${id}`, {
+      acknowledged: true,
+      lines: [{ lineId: lineOf(i.sm7b), unitIds: [light.id] }],
+    })
+    expect(res.status).toBe(400)
+    expect(res.body.error.code).toBe("UNIT_TYPE_MISMATCH")
+    expect(unitById(h, light.id).status).toBe("available")
+    await nothingCheckedOut(h, sam, id)
+  })
+
+  it("refuses a unit that is not available and checks out nothing else in the request", async () => {
+    const h = createHarness()
+    const i = ids(h)
+    const { id, sam, lineOf } = await atPickup(h)
+    const [good, broken] = unitsOf(h, i.sm7b)
+    const eli = await h.as("eli.manager")
+    expect(
+      (
+        await eli.post(`/api/equipment/units/${broken!.id}/status`, {
+          status: "damaged",
+          reason: "Grille dented",
+        })
+      ).status
+    ).toBe(200)
+
+    const res = await sam.post(`/api/checkout/${id}`, {
+      acknowledged: true,
+      lines: [{ lineId: lineOf(i.sm7b), unitIds: [good!.id, broken!.id] }],
+    })
+    expect(res.status).toBe(409)
+    expect(res.body.error.code).toBe("UNIT_UNAVAILABLE")
+    // The good unit was processed first; the whole checkout must roll back.
+    expect(unitById(h, good!.id).status).toBe("available")
+    await nothingCheckedOut(h, sam, id)
+  })
+})
+
+describe("publishing results (BR-008-06, BR-008-07)", () => {
+  /** Runs the seeded thesis (Studio B, sponsor Priya; requires results and sponsor sign-off) to PostEvent with nothing out. */
+  async function thesisAwaitingResults(h: Harness) {
+    const thesis = h.db
+      .select()
+      .from(s.events)
+      .where(eq(s.events.title, "Thesis: The Last Projectionist"))
+      .get()!
+    const days = h.db
+      .select()
+      .from(s.eventDays)
+      .where(eq(s.eventDays.eventId, thesis.id))
+      .all()
+    const start = days.map((d) => d.startsAt).sort()[0]!
+    const end = days
+      .map((d) => d.endsAt)
+      .sort()
+      .at(-1)!
+    const tara = await h.as("tara.tech")
+    setNow(new Date(Date.parse(start) - 10 * 60_000).toISOString())
+    const out = await tara.post(`/api/checkout/${thesis.id}`, {
+      acknowledged: true,
+      lines: [],
+      taskOverrideReason: "Briefing done in person",
+    })
+    expect(out.status).toBe(200)
+    setNow(new Date(Date.parse(end) + 60_000).toISOString())
+    runJobs(h.db)
+    expect((await tara.get(`/api/events/${thesis.id}`)).body.state).toBe(
+      "PostEvent"
+    )
+    const id = thesis.id
+    return {
+      id,
+      tara,
+      priya: await h.as("priya.patel"),
+      publish: (body: { overrideReason?: string } = {}) =>
+        tara.post(`/api/results/events/${id}/publish`, body),
+      status: async () =>
+        (await tara.get(`/api/results/events/${id}`)).body.status as string,
+      addResult: async () =>
+        expect(
+          (
+            await tara.post(`/api/results/events/${id}/items`, {
+              kind: "link",
+              title: "Final cut",
+              url: "https://example.edu/final-cut",
+            })
+          ).status
+        ).toBe(201),
+    }
+  }
+
+  it("holds publication until the sponsor signs off, even with a reason", async () => {
+    const h = createHarness()
+    const t = await thesisAwaitingResults(h)
+    await t.addResult()
+
+    for (const body of [{}, { overrideReason: "Sponsor is travelling" }]) {
+      const res = await t.publish(body)
+      expect(res.status).toBe(409)
+      expect(res.body.error.code).toBe("SIGNOFF_PENDING")
+    }
+    expect(await t.status()).toBe("collecting")
+
+    expect(
+      (
+        await t.priya.post(`/api/results/events/${t.id}/signoff`, {
+          comment: "Approved for the archive",
+        })
+      ).status
+    ).toBe(200)
+    expect((await t.publish()).status).toBe(200)
+    expect(await t.status()).toBe("published")
+  })
+
+  it("lets staff publish without sign-off once the override time has passed, with a reason", async () => {
+    const h = createHarness()
+    const t = await thesisAwaitingResults(h)
+    await t.addResult()
+    const overrideAt = (await t.tara.get(`/api/results/events/${t.id}`)).body
+      .signoffOverrideAt as string
+
+    setNow(new Date(Date.parse(overrideAt) - 60_000).toISOString())
+    expect((await t.publish()).body.error.code).toBe("SIGNOFF_PENDING")
+
+    setNow(overrideAt)
+    const bare = await t.publish()
+    expect(bare.status).toBe(409)
+    expect(bare.body.error).toMatchObject({
+      code: "OVERRIDE_REASON_REQUIRED",
+      details: { reasons: ["sponsor sign-off pending"] },
+    })
+    expect(
+      (await t.publish({ overrideReason: "Sponsor on sabbatical" })).status
+    ).toBe(200)
+    expect(await t.status()).toBe("published")
+  })
+
+  it("requires a reason to publish with no results uploaded, and records it", async () => {
+    const h = createHarness()
+    const t = await thesisAwaitingResults(h)
+    expect(
+      (
+        await t.priya.post(`/api/results/events/${t.id}/signoff`, {
+          comment: "",
+        })
+      ).status
+    ).toBe(200)
+
+    for (const body of [{}, { overrideReason: "   " }]) {
+      const res = await t.publish(body)
+      expect(res.status).toBe(409)
+      expect(res.body.error).toMatchObject({
+        code: "OVERRIDE_REASON_REQUIRED",
+        details: { reasons: ["no results uploaded"] },
+      })
+    }
+    expect(await t.status()).toBe("collecting")
+
+    const ok = await t.publish({
+      overrideReason: "Footage handed over on drive",
+    })
+    expect(ok.status).toBe(200)
+    const pkg = h.db
+      .select()
+      .from(s.resultPackages)
+      .where(eq(s.resultPackages.eventId, t.id))
+      .get()!
+    expect(pkg.status).toBe("published")
+    expect(pkg.publishOverrideReason).toBe("Footage handed over on drive")
+  })
+})
