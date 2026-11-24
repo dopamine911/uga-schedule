@@ -4,12 +4,7 @@
     "api": {
       "root": "packages/api",
       "framework": "hono",
-      "entrypoint": "src/index.ts",
-      "functions": {
-        "src/index.ts": {
-          "includeFiles": "drizzle/**"
-        }
-      }
+      "entrypoint": "src/index.ts"
     },
     "web": {
       "root": "packages/web",

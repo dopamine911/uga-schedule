@@ -13,18 +13,19 @@ import type { AppEnv } from "./env.ts"
 if (!config.sessionSecret)
   throw new Error("SESSION_SECRET is required outside dev mode.")
 
-const db = openDb()
+const db = await openDb()
 const app: Hono<AppEnv> = createApp(db)
 
 /** Vercel Cron sends `Authorization: Bearer $CRON_SECRET`; anything else is turned away. */
-app.get("/api/jobs/tick", (c) => {
+app.get("/api/jobs/tick", async (c) => {
   const secret = process.env.CRON_SECRET
   if (!secret || c.req.header("authorization") !== `Bearer ${secret}`)
     return c.json(
       { error: { code: "UNAUTHORIZED", message: "Not allowed." } },
       401
     )
-  return c.json(runJobs(db))
+  // A GET: with a local database the request middleware already runs it exclusively.
+  return c.json(await runJobs(db))
 })
 
 export default app

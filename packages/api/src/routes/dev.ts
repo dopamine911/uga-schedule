@@ -24,12 +24,15 @@ export const routes = new Hono<AppEnv>()
         reset: z.boolean().optional(),
       })
     ),
-    (c) => {
+    async (c) => {
       const body = c.req.valid("json")
-      if (body.reset) resetClock()
-      if (body.advanceMinutes) advanceClock(body.advanceMinutes * 60_000)
-      const ran = runJobs(c.var.db)
+      if (body.reset) await resetClock(c.var.db)
+      if (body.advanceMinutes)
+        await advanceClock(c.var.db, body.advanceMinutes * 60_000)
+      const ran = await runJobs(c.var.db)
       return c.json({ now: now(), offsetMs: clockOffsetMs(), ran })
     }
   )
-  .post("/run-jobs", (c) => c.json({ now: now(), ran: runJobs(c.var.db) }))
+  .post("/run-jobs", async (c) =>
+    c.json({ now: now(), ran: await runJobs(c.var.db) })
+  )

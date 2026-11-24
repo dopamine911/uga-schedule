@@ -40,6 +40,7 @@
       "plugins": ["typescript", "unicorn", "oxc", "react"],
       "env": { "browser": true },
       "rules": {
+        "typescript/no-floating-promises": "off",
         "react/rules-of-hooks": "error",
         "react/exhaustive-deps": "warn",
         "react/static-components": "error",
@@ -59,6 +60,14 @@
     {
       "files": ["packages/api/**/*.ts", "packages/web/vite.config.ts"],
       "env": { "node": true }
+    },
+    {
+      "files": ["packages/api/**/*.ts"],
+      "rules": {
+        "typescript/await-thenable": "error",
+        "typescript/no-floating-promises": "error",
+        "typescript/no-misused-promises": "error"
+      }
     },
     {
       "files": ["**/*.test.ts"],

@@ -35,34 +35,39 @@ export interface RecheckScope {
 }
 
 /** Returns ids of events that gained at least one new review reason. */
-export function recheckEvents(db: DB, scope: RecheckScope): string[] {
+export async function recheckEvents(
+  db: DB,
+  scope: RecheckScope
+): Promise<string[]> {
   let ids: string[]
   if (scope.eventIds) ids = scope.eventIds
   else if (scope.equipmentTypeId)
-    ids = db
-      .select({ id: equipmentLines.eventId })
-      .from(equipmentLines)
-      .where(eq(equipmentLines.equipmentTypeId, scope.equipmentTypeId))
-      .all()
-      .map((r) => r.id)
+    ids = (
+      await db
+        .select({ id: equipmentLines.eventId })
+        .from(equipmentLines)
+        .where(eq(equipmentLines.equipmentTypeId, scope.equipmentTypeId))
+        .all()
+    ).map((r) => r.id)
   else
-    ids = db
-      .select({ id: events.id })
-      .from(events)
-      .where(
-        and(
-          scope.requesterId
-            ? eq(events.requesterId, scope.requesterId)
-            : undefined,
-          scope.sponsorId ? eq(events.sponsorId, scope.sponsorId) : undefined,
-          scope.studioId ? eq(events.studioId, scope.studioId) : undefined
+    ids = (
+      await db
+        .select({ id: events.id })
+        .from(events)
+        .where(
+          and(
+            scope.requesterId
+              ? eq(events.requesterId, scope.requesterId)
+              : undefined,
+            scope.sponsorId ? eq(events.sponsorId, scope.sponsorId) : undefined,
+            scope.studioId ? eq(events.studioId, scope.studioId) : undefined
+          )
         )
-      )
-      .all()
-      .map((r) => r.id)
+        .all()
+    ).map((r) => r.id)
   if (ids.length === 0) return []
 
-  const open = db
+  const open = await db
     .select()
     .from(events)
     .where(
@@ -74,9 +79,9 @@ export function recheckEvents(db: DB, scope: RecheckScope): string[] {
     .all()
   const flagged: string[] = []
   for (const ev of open) {
-    const draft = draftOf(db, ev.id)
+    const draft = await draftOf(db, ev.id)
     // Shortage is attributed to the later-created event (US-003-03): only count earlier reservations.
-    const ctx = buildSubmissionContext(db, draft, {
+    const ctx = await buildSubmissionContext(db, draft, {
       excludeEventId: ev.id,
       createdBefore: ev.createdAt,
     })
@@ -91,13 +96,14 @@ export function recheckEvents(db: DB, scope: RecheckScope): string[] {
     const added = reasons.filter((r) => !ev.reviewReasons.includes(r))
     if (added.length === 0) continue
     const merged = [...new Set([...ev.reviewReasons, ...reasons])]
-    db.update(events)
+    await db
+      .update(events)
       .set({ needsReview: true, reviewReasons: merged, updatedAt: now() })
       .where(eq(events.id, ev.id))
       .run()
-    notify(db, {
+    await notify(db, {
       code: "NEEDS_REVIEW",
-      to: eventAudience(db, ev.id, ["studio_staff", "sponsor"]),
+      to: await eventAudience(db, ev.id, ["studio_staff", "sponsor"]),
       eventId: ev.id,
       subject: `Needs review: ${ev.title}`,
       body: issues

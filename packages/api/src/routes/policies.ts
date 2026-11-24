@@ -17,29 +17,32 @@ import {
 const KEYS = Object.keys(POLICY_DEFAULTS) as PolicyKey[]
 
 export const routes = new Hono<AppEnv>()
-  .get("/", (c) => {
+  .get("/", async (c) => {
     requireUser(c)
-    return c.json(getPolicies(c.var.db))
+    return c.json(await getPolicies(c.var.db))
   })
-  .put("/", v("json", z.record(z.string(), z.number().int().min(0))), (c) => {
-    const me = authorize(c, "policy.manage")
-    const db = c.var.db
-    const body = c.req.valid("json")
-    const unknown = Object.keys(body).filter(
-      (k) => !KEYS.includes(k as PolicyKey)
-    )
-    if (unknown.length)
-      throw badRequest("UNKNOWN_POLICY", "Unknown policy.", { keys: unknown })
-    const before = getPolicies(db)
-    db.transaction(() => {
+  .put(
+    "/",
+    v("json", z.record(z.string(), z.number().int().min(0))),
+    async (c) => {
+      const me = authorize(c, "policy.manage")
+      const db = c.var.db
+      const body = c.req.valid("json")
+      const unknown = Object.keys(body).filter(
+        (k) => !KEYS.includes(k as PolicyKey)
+      )
+      if (unknown.length)
+        throw badRequest("UNKNOWN_POLICY", "Unknown policy.", { keys: unknown })
+      const before = await getPolicies(db)
       for (const key of Object.keys(body) as PolicyKey[]) {
         const value = body[key]!
         if (before[key] === value) continue
-        db.insert(policies)
+        await db
+          .insert(policies)
           .values({ key, value })
           .onConflictDoUpdate({ target: policies.key, set: { value } })
           .run()
-        audit(db, {
+        await audit(db, {
           actorId: me.id,
           action: "policy.update",
           entityType: "policy",
@@ -48,6 +51,6 @@ export const routes = new Hono<AppEnv>()
           after: { value },
         })
       }
-    })
-    return c.json(getPolicies(db))
-  })
+      return c.json(await getPolicies(db))
+    }
+  )
