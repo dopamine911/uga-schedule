@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { fmtDayShort, fmtTime } from "@/lib/format"
 import {
   buildSegments,
+  busyToneClass,
   DAY_MIN,
   type BusySeg,
   type DayView,
@@ -105,8 +106,10 @@ export function ScheduleGrid({
             ))}
           </div>
           <p className="mt-3 text-xs text-muted-foreground">
-            White: open hours. Grey: closed. Dark: booked. Dashed: turnaround.
-            Red: blackout. Times are in {tz}.
+            White: open hours. Grey: closed. Blue, dashed: waiting on sponsor or
+            staff. Teal: confirmed. Green: in progress. Amber: after the event.
+            Black: booked (details hidden). Grey dashed: turnaround. Red:
+            blackout. Times are in {tz}.
           </p>
         </div>
       </CardContent>
@@ -191,8 +194,7 @@ function BlackoutBlock({ seg, geo }: { seg: Seg; geo: Geometry }) {
 function BusyBlock({ seg, geo }: { seg: BusySeg; geo: Geometry }) {
   const className = seg.turnaround
     ? "bg-muted text-muted-foreground border-border absolute inset-x-0 overflow-hidden rounded-sm border border-dashed px-1 text-xs"
-    : // Solid black = "this time is taken", whatever the request's state; the grid has no state to colour by.
-      "bg-primary text-primary-foreground absolute inset-x-0 overflow-hidden rounded-sm px-1 text-xs"
+    : `${busyToneClass(seg.state)} absolute inset-x-0 overflow-hidden rounded-sm px-1 text-xs`
   const style = {
     top: geo.top(seg.start),
     height: geo.size(seg.start, seg.end),

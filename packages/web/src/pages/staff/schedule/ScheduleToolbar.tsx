@@ -1,5 +1,6 @@
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import {
   Select,
   SelectContent,
@@ -9,10 +10,15 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
+export type CalendarView = "week" | "month"
+
 export function ScheduleToolbar({
+  view,
+  onViewChange,
   studioId,
   studios,
   studiosPending,
+  allStudiosValue,
   label,
   unit,
   onStudioChange,
@@ -20,9 +26,13 @@ export function ScheduleToolbar({
   onToday,
   onNext,
 }: {
+  view: CalendarView
+  onViewChange: (view: CalendarView) => void
   studioId: string
   studios: { id: string; name: string }[]
   studiosPending: boolean
+  /** When set, the picker offers "All studios" with this value (month view only). */
+  allStudiosValue?: string
   label: string
   unit: string
   onStudioChange: (id: string) => void
@@ -32,6 +42,23 @@ export function ScheduleToolbar({
 }) {
   return (
     <div className="flex flex-wrap items-end gap-4">
+      <div className="flex flex-col gap-2">
+        <span id="calendar-view-label" className="text-sm font-medium">
+          View
+        </span>
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          value={view}
+          onValueChange={(next) => {
+            if (next === "week" || next === "month") onViewChange(next)
+          }}
+          aria-labelledby="calendar-view-label"
+        >
+          <ToggleGroupItem value="week">Week</ToggleGroupItem>
+          <ToggleGroupItem value="month">Month</ToggleGroupItem>
+        </ToggleGroup>
+      </div>
       <div className="flex flex-col gap-2">
         <label htmlFor="studio" className="text-sm font-medium">
           Studio
@@ -48,6 +75,9 @@ export function ScheduleToolbar({
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
+              {allStudiosValue && (
+                <SelectItem value={allStudiosValue}>All studios</SelectItem>
+              )}
               {studios.map((s) => (
                 <SelectItem key={s.id} value={s.id}>
                   {s.name}

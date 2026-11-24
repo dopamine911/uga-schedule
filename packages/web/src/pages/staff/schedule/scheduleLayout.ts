@@ -24,6 +24,8 @@ export interface Seg {
 
 export interface BusySeg extends Seg {
   eventId?: string
+  /** Event state when the viewer may see details (staff of the studio, managers, admins, own events). */
+  state?: string
   turnaround: boolean
 }
 
@@ -59,6 +61,56 @@ export function busyEventId(b: BusyView): string | undefined {
   return "eventId" in b ? b.eventId : undefined
 }
 
+export function busyState(b: BusyView): string | undefined {
+  return "state" in b ? b.state : undefined
+}
+
+/**
+ * Colour for a busy slot by the event's state, using the colour jobs in index.css:
+ * blue while still waiting on sponsor or staff, teal once confirmed, green while live,
+ * amber after the event. Slots whose details the viewer may not see stay solid black ("taken").
+ */
+export function busyToneClass(state: string | undefined): string {
+  switch (state) {
+    case "Submitted":
+    case "SponsorApproved":
+      return "border border-dashed border-info-foreground/40 bg-info text-info-foreground"
+    case "Confirmed":
+      return "bg-success text-success-foreground"
+    case "InProgress":
+      return "bg-live text-live-foreground"
+    case "PostEvent":
+      return "bg-warning text-warning-foreground"
+    default:
+      return "bg-primary text-primary-foreground"
+  }
+}
+
+/** First and last day of the month containing `anchor` ("YYYY-MM-DD"); at most 31 days, the API's limit. */
+export function monthRange(anchor: LocalDate): {
+  first: LocalDate
+  last: LocalDate
+} {
+  const first = `${anchor.slice(0, 8)}01`
+  const year = Number(anchor.slice(0, 4))
+  const month = Number(anchor.slice(5, 7))
+  // Day 0 of the next month is the last day of this one.
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  return {
+    first,
+    last: `${anchor.slice(0, 8)}${String(lastDay).padStart(2, "0")}`,
+  }
+}
+
+const MONTH_LABEL = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+})
+export function monthLabel(anchor: LocalDate): string {
+  return MONTH_LABEL.format(new Date(`${anchor.slice(0, 7)}-15T12:00:00Z`))
+}
+
 /**
  * Busy, turnaround and blackout spans, clipped to each campus day so they land in the right
  * column. `earliest`/`latest` widen the visible hours around every open, busy and blackout span.
@@ -84,6 +136,7 @@ export function buildSegments(schedule: ScheduleView, tz: string) {
         key: `b-${b.start}-${day}`,
         label,
         eventId: busyEventId(b),
+        state: busyState(b),
         turnaround: false,
       })
       earliest = Math.min(earliest, start)
