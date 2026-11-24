@@ -123,8 +123,9 @@
   --radius: 0.5rem;
   --sidebar: #000000;
   --sidebar-foreground: #ededed;
-  --sidebar-primary: #2c3036;
-  --sidebar-primary-foreground: #ffffff;
+  /* Current sidebar page: white pill, black text, so it stands out on the black sidebar without using red. */
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #15171a;
   --sidebar-accent: #1c1c1c;
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #262626;
@@ -169,8 +170,9 @@
   --chart-5: #9ea2a2;
   --sidebar: #000000;
   --sidebar-foreground: #ededed;
-  --sidebar-primary: #2c3036;
-  --sidebar-primary-foreground: #ffffff;
+  /* Current sidebar page: white pill, black text, so it stands out on the black sidebar without using red. */
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #15171a;
   --sidebar-accent: #1c1c1c;
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #262626;

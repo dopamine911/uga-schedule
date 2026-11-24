@@ -367,7 +367,7 @@ export function NeedsActionCard({
   loading: boolean
 }) {
   return (
-    <Card className="border-t-4 border-t-primary">
+    <Card>
       <CardHeader>
         <CardTitle>
           <IconTitle icon={ListTodoIcon}>Needs your action</IconTitle>
@@ -385,9 +385,10 @@ export function NeedsActionCard({
           <ul className="flex flex-col gap-3">
             {actions.map((a) => (
               <li key={`${a.id}:${a.action}`} className="flex gap-3">
+                {/* Amber like the header's "Needs you" chip: waiting on this user, not late (red). */}
                 <span
                   aria-hidden="true"
-                  className="mt-1.5 size-2 shrink-0 rounded-full bg-primary"
+                  className="mt-1.5 size-2.5 shrink-0 rounded-full bg-warning-foreground"
                 />
                 <span className="flex min-w-0 flex-col">
                   <Link

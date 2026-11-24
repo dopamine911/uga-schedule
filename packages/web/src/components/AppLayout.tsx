@@ -5,6 +5,7 @@ import { Navigate, NavLink, Outlet, useLocation } from "react-router"
 import { toast } from "sonner"
 import { useNavAllowed } from "@/components/common"
 import { GlobalSearch } from "@/components/GlobalSearch"
+import { useSidebarCounts } from "@/components/useSidebarCounts"
 import { useNow } from "@/components/staff/shared"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -46,9 +47,9 @@ function useUnreadCount() {
   })
 }
 
-/** Active nav item: a lighter charcoal than the black sidebar, white bold text. Red is reserved for "act now". */
+/** Active nav item: white pill with black bold text (hover keeps it white). Red is reserved for "act now". */
 const ACTIVE_NAV =
-  "data-[active=true]:bg-sidebar-primary data-[active=true]:text-sidebar-primary-foreground data-[active=true]:font-bold"
+  "data-[active=true]:bg-sidebar-primary data-[active=true]:text-sidebar-primary-foreground data-[active=true]:font-bold data-[active=true]:hover:bg-sidebar-primary data-[active=true]:hover:text-sidebar-primary-foreground"
 
 export function AppLayout() {
   const me = useMe()
@@ -60,6 +61,7 @@ export function AppLayout() {
 
   const activeTo = routeFor(pathname)?.to
   const isActive = (to: string) => to === activeTo
+  const sidebarCounts = useSidebarCounts()
   const sidebarGroups = sidebarGroupsFor(
     user.roles.map((assignment) => assignment.role),
     allowed
@@ -109,6 +111,20 @@ export function AppLayout() {
                           >
                             <item.icon />
                             <span>{item.label}</span>
+                            {sidebarCounts[item.to] !== undefined && (
+                              <>
+                                {/* Own background so the count stays readable on the white current-page pill. */}
+                                <span
+                                  aria-hidden="true"
+                                  className="ml-auto grid h-5 min-w-5 place-items-center rounded-full bg-sidebar-accent px-1.5 text-xs font-bold text-sidebar-accent-foreground tabular-nums ring-1 ring-sidebar-border"
+                                >
+                                  {sidebarCounts[item.to]}
+                                </span>
+                                <span className="sr-only">
+                                  , {sidebarCounts[item.to]} waiting
+                                </span>
+                              </>
+                            )}
                           </NavLink>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
