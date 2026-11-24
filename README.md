@@ -55,6 +55,8 @@ pnpm doctor        # React Doctor scan of packages/web (pinned in devDependencie
 
 Lint and format configs live at the repo root and cover every package. oxlint doesn't flag undefined names in TypeScript; `pnpm typecheck` does.
 
+`pnpm check` also runs in CI on every pull request and on pushes to `main` (`.github/workflows/check.yml`, Node 24, frozen lockfile). Make it a required status check in the branch protection settings to block merging on failures.
+
 React Doctor also runs on every pull request and on pushes to `main` (`.github/workflows/react-doctor.yml`). It comments with new findings and never fails the check; set `blocking` in that file to gate on them.
 
 ## v0 scope versus the specs
