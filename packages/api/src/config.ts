@@ -11,8 +11,8 @@ export const config = {
   dbUrl:
     process.env.TURSO_DATABASE_URL ?? `file:${resolve(dataDir, "studio.db")}`,
   dbAuthToken: process.env.TURSO_AUTH_TOKEN,
-  /** Result files go to Vercel Blob when a store is connected, else to this local directory. */
-  blob: Boolean(process.env.BLOB_STORE_ID || process.env.BLOB_READ_WRITE_TOKEN),
+  /** Result files go to Vercel Blob when a store's read-write token is set (client uploads need it), else to this directory. */
+  blob: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
   uploadDir: process.env.UPLOAD_DIR ?? resolve(dataDir, "uploads"),
   /** Campus time zone (overview §8). */
   tz: process.env.CAMPUS_TZ ?? "America/New_York",

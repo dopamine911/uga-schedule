@@ -75,21 +75,21 @@ The browser calls `/api` on its own origin, so no service binding is needed. Bac
 Data lives in Turso and result files in a private Vercel Blob store:
 
 1. Add the Turso integration from the Vercel Marketplace and connect the database to the project; it sets `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`. Put the function region next to the database's.
-2. Create a private Blob store and connect it to the project (`vercel blob create-store results --access private --yes`); it sets `BLOB_STORE_ID`, and the functions authenticate with OIDC.
+2. Create a private Blob store and connect it to the project (`vercel blob create-store results --access private --yes`); it sets `BLOB_READ_WRITE_TOKEN`, which browser uploads need to mint client tokens.
 3. Apply migrations before the first deploy and before any deploy that changes the schema: `TURSO_DATABASE_URL=… TURSO_AUTH_TOKEN=… pnpm db:migrate`. Functions never migrate.
 
-Uploads go from the browser straight to Blob through presigned URLs, so the 4.5 MB function body limit does not apply; files of 100 MB and more upload in parts. Downloads redirect to a signed Blob URL that is valid for five minutes.
+Uploads go from the browser straight to Blob with a client token the API issues for one file key, so the 4.5 MB function body limit does not apply; files of 100 MB and more upload in parts. Downloads redirect to a signed Blob URL that is valid for five minutes.
 
 Project environment variables:
 
-| Variable                                     | Required | Purpose                                                                                     |
-| -------------------------------------------- | -------- | ------------------------------------------------------------------------------------------- |
-| `SESSION_SECRET`                             | yes      | Signs session cookies and calendar feed links                                               |
-| `CRON_SECRET`                                | yes      | Vercel Cron sends it as a bearer token; `/api/jobs/tick` rejects requests without it        |
-| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`     | yes      | The database; set by the Turso integration                                                  |
-| `BLOB_STORE_ID` (or `BLOB_READ_WRITE_TOKEN`) | yes      | The Blob store; set when the store is connected. Without it files go to the function's disk |
-| `PUBLIC_BASE_URL`                            | no       | Origin for links in notifications and feeds; defaults to the deployment URL (`VERCEL_URL`)  |
-| `CAMPUS_TZ`                                  | no       | Defaults to `America/New_York`                                                              |
+| Variable                                 | Required | Purpose                                                                                     |
+| ---------------------------------------- | -------- | ------------------------------------------------------------------------------------------- |
+| `SESSION_SECRET`                         | yes      | Signs session cookies and calendar feed links                                               |
+| `CRON_SECRET`                            | yes      | Vercel Cron sends it as a bearer token; `/api/jobs/tick` rejects requests without it        |
+| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | yes      | The database; set by the Turso integration                                                  |
+| `BLOB_READ_WRITE_TOKEN`                  | yes      | The Blob store; set when the store is connected. Without it files go to the function's disk |
+| `PUBLIC_BASE_URL`                        | no       | Origin for links in notifications and feeds; defaults to the deployment URL (`VERCEL_URL`)  |
+| `CAMPUS_TZ`                              | no       | Defaults to `America/New_York`                                                              |
 
 Preview deployments share the production database unless the integration gives them their own; connect a separate Turso database to the Preview environment to keep test data out of production.
 

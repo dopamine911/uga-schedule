@@ -1,8 +1,5 @@
 import { can } from "@studio/domain"
-import {
-  type HandleUploadPresignedBody,
-  handleUploadPresigned,
-} from "@vercel/blob/client"
+import { type HandleUploadBody, handleUpload } from "@vercel/blob/client"
 import { eq } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
@@ -21,7 +18,7 @@ import { now } from "../lib/clock.ts"
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.ts"
 import {
   type UploadRules,
-  blobPutToken,
+  blobUploadLimits,
   deleteObject,
   downloadResponse,
   matchesContentType,
@@ -306,8 +303,8 @@ export const routes = new Hono<AppEnv>()
     const key = storageKey(pkg.id, crypto.randomUUID(), body.fileName)
     return c.json({ key, target: await uploadTarget(key, UPLOAD_RULES) })
   })
-  /** Blob only: the `handleUploadUrl` of `uploadPresigned` in the browser; signs a PUT for one issued key. */
-  .post("/events/:eventId/uploads/presign", async (c) => {
+  /** Blob only: the `handleUploadUrl` of `upload` in the browser; issues a client token for one issued key. */
+  .post("/events/:eventId/uploads/token", async (c) => {
     if (!config.blob) throw notFound("Upload")
     const user = requireUser(c)
     const { pkg } = await uploadablePackage(
@@ -315,13 +312,13 @@ export const routes = new Hono<AppEnv>()
       user,
       c.req.param("eventId")
     )
-    const result = await handleUploadPresigned({
-      body: (await c.req.json()) as HandleUploadPresignedBody,
+    const result = await handleUpload({
+      body: (await c.req.json()) as HandleUploadBody,
       request: c.req.raw,
-      getSignedToken: async (pathname) => {
+      onBeforeGenerateToken: async (pathname) => {
         if (!itemIdOfKey(pkg.id, pathname))
           throw badRequest("BAD_KEY", "Bad file key.")
-        return blobPutToken(pathname, UPLOAD_RULES)
+        return blobUploadLimits(UPLOAD_RULES)
       },
     })
     return c.json(result)

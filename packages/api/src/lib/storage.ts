@@ -29,7 +29,7 @@ export interface UploadRules {
   maxBytes: number
 }
 
-/** Where the browser sends the file: Blob through `uploadPresigned`, or a PUT to the given local URL. */
+/** Where the browser sends the file: Blob through `upload` from `@vercel/blob/client`, or a PUT to the local URL. */
 export type UploadTarget =
   | { storage: "blob" }
   | { storage: "local"; url: string }
@@ -61,25 +61,17 @@ export async function uploadTarget(
   return { storage: "local", url: `${LOCAL_UPLOAD_PATH}${token}` }
 }
 
-/** For `handleUploadPresigned`: a Blob token that can only write `key`, within `rules`. */
-export async function blobPutToken(key: string, rules: UploadRules) {
-  const validUntil = Date.now() + UPLOAD_TTL_MS
-  const token = await issueSignedToken({
-    pathname: key,
-    operations: ["put"],
+/**
+ * For `handleUpload`'s `onBeforeGenerateToken`: limits for the client token, which Blob enforces on the upload. The
+ * token is minted from BLOB_READ_WRITE_TOKEN for exactly the pathname the browser asked for (checked by the caller).
+ */
+export function blobUploadLimits(rules: UploadRules) {
+  return {
     allowedContentTypes: [...rules.contentTypes],
     maximumSizeInBytes: rules.maxBytes,
-    validUntil,
-  })
-  return {
-    token,
-    urlOptions: {
-      allowedContentTypes: [...rules.contentTypes],
-      maximumSizeInBytes: rules.maxBytes,
-      validUntil,
-      addRandomSuffix: false,
-      allowOverwrite: false,
-    },
+    validUntil: Date.now() + UPLOAD_TTL_MS,
+    addRandomSuffix: false,
+    allowOverwrite: false,
   }
 }
 

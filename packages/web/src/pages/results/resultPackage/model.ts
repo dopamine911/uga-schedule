@@ -1,4 +1,4 @@
-import { uploadPresigned } from "@vercel/blob/client"
+import { upload } from "@vercel/blob/client"
 import type { InferResponseType } from "hono/client"
 import type { DialogField } from "@/components/events/shared"
 import { api, unwrap } from "@/lib/api"
@@ -144,9 +144,9 @@ export async function uploadFile(eventId: string, file: File, title: string) {
     })
   )
   if (target.storage === "blob") {
-    await uploadPresigned(key, file, {
+    await upload(key, file, {
       access: "private",
-      handleUploadUrl: `/api/results/events/${eventId}/uploads/presign`,
+      handleUploadUrl: `/api/results/events/${eventId}/uploads/token`,
       contentType,
       multipart: file.size >= MULTIPART_FROM_BYTES,
     })
