@@ -35,7 +35,7 @@ import {
 import { api, unwrap } from "@/lib/api"
 import { useMe, useSignOut, useTz, useUser } from "@/lib/auth"
 import { fmtClock, fmtInstant, humanize, initials } from "@/lib/format"
-import { NAV, routeFor } from "@/lib/nav"
+import { routeFor, sidebarGroupsFor } from "@/lib/nav"
 
 function useUnreadCount() {
   return useQuery({
@@ -58,6 +58,10 @@ export function AppLayout() {
 
   const activeTo = routeFor(pathname)?.to
   const isActive = (to: string) => to === activeTo
+  const sidebarGroups = sidebarGroupsFor(
+    user.roles.map((assignment) => assignment.role),
+    allowed
+  )
 
   return (
     <SidebarProvider>
@@ -82,9 +86,7 @@ export function AppLayout() {
           </NavLink>
         </SidebarHeader>
         <SidebarContent>
-          {NAV.map((group) => {
-            const items = group.items.filter((i) => !i.hidden && allowed(i.to))
-            if (items.length === 0) return null
+          {sidebarGroups.map((group) => {
             return (
               <SidebarGroup key={group.label}>
                 <SidebarGroupLabel className="tracking-[0.14em] uppercase">
@@ -92,7 +94,7 @@ export function AppLayout() {
                 </SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    {items.map((item) => (
+                    {group.items.map((item) => (
                       <SidebarMenuItem key={item.to}>
                         <SidebarMenuButton
                           asChild
