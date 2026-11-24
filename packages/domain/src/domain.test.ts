@@ -51,6 +51,14 @@ describe("levels (F-002)", () => {
     expect(eventLevel([l3], ["2027-05-14", "2027-05-15", "2027-05-16"])).toBe(0)
   })
 
+  it("counts a grant on its first and last day, and not a day outside (F-002 §4)", () => {
+    expect(effectiveLevel([course], "2027-01-19")).toBe(0)
+    expect(effectiveLevel([course], "2027-01-20")).toBe(1)
+    expect(effectiveLevel([course], "2027-05-15")).toBe(1)
+    expect(effectiveLevel([course], "2027-05-16")).toBe(0)
+    expect(eventLevel([course], ["2027-05-14", "2027-05-15"])).toBe(1)
+  })
+
   it("treats revocation as effective from the revocation day", () => {
     const g = { ...course, revokedOn: "2027-03-03" }
     expect(effectiveLevel([g], "2027-03-02")).toBe(1)

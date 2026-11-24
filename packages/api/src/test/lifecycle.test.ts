@@ -332,7 +332,7 @@ describe("expiry (US-006-07)", () => {
 })
 
 describe("late return, hold and submission block (US-007-03)", () => {
-  it("places a LATE_RETURN hold that blocks the next submission", async () => {
+  it("places a LATE_RETURN hold that blocks submissions until it clears itself", async () => {
     const h = createHarness()
     const i = ids(h)
     pinNoon()
@@ -353,14 +353,26 @@ describe("late return, hold and submission block (US-007-03)", () => {
     const checkin = await sam.post(`/api/checkout/${id}/checkin`, { items })
     expect(checkin.status).toBe(200)
 
-    const holds = h.db
+    const lateHold = () =>
+      h.db
+        .select()
+        .from(s.holds)
+        .where(
+          and(eq(s.holds.userId, i.alice), eq(s.holds.reason, "LATE_RETURN"))
+        )
+        .get()!
+    // BR-007-10: clears 7 days (LATE_HOLD_CLEAR_DAYS) after the last item came back.
+    const returnedAt = h.db
       .select()
-      .from(s.holds)
-      .where(eq(s.holds.userId, i.alice))
+      .from(s.checkoutRecords)
+      .where(eq(s.checkoutRecords.eventId, id))
       .all()
-    const late = holds.find((x) => x.reason === "LATE_RETURN")
-    expect(late?.status).toBe("active")
-    expect(late?.autoClearAt).toBeTruthy()
+      .map((r) => r.inAt!)
+      .sort()
+      .at(-1)!
+    const clearsAt = new Date(Date.parse(returnedAt) + 7 * 24 * HOUR)
+    expect(lateHold().status).toBe("active")
+    expect(lateHold().autoClearAt).toBe(clearsAt.toISOString())
 
     const alice = await h.as("alice.student")
     const next = await alice.post(
@@ -370,6 +382,21 @@ describe("late return, hold and submission block (US-007-03)", () => {
     const submit = await alice.post(`/api/events/${next.body.id}/submit`, {})
     expect(submit.status).toBe(409)
     expect(submit.body.error.code).toBe("HOLD_ACTIVE")
+
+    // The hold outlasts the jobs until its clear time, then lifts by itself and stops blocking.
+    setNow(new Date(clearsAt.getTime() - 60_000).toISOString())
+    runJobs(h.db)
+    expect(lateHold().status).toBe("active")
+    setNow(new Date(clearsAt.getTime() + 60_000).toISOString())
+    expect(runJobs(h.db).late_holds_cleared).toBe(1)
+    expect(lateHold()).toMatchObject({ status: "cleared", clearedBy: null })
+    const later = await alice.post(
+      "/api/events",
+      podcastDraft(i, dayPlus(today(), 5), "10:00", "11:00", "Later")
+    )
+    expect(
+      (await alice.post(`/api/events/${later.body.id}/submit`, {})).status
+    ).toBe(200)
   })
 })
 
@@ -962,5 +989,137 @@ describe("publishing results (BR-008-06, BR-008-07)", () => {
       .get()!
     expect(pkg.status).toBe("published")
     expect(pkg.publishOverrideReason).toBe("Footage handed over on drive")
+  })
+})
+
+describe("grant expiry warning (BR-002-10)", () => {
+  const warned = (h: Harness) =>
+    h.db
+      .select()
+      .from(s.notifications)
+      .where(eq(s.notifications.code, "GRANT_EXPIRING"))
+      .all()
+  const bensManualGrant = (h: Harness) =>
+    h.db
+      .select()
+      .from(s.levelGrants)
+      .where(
+        and(
+          eq(s.levelGrants.userId, ids(h).ben),
+          eq(s.levelGrants.source, "manual")
+        )
+      )
+      .get()!
+
+  /** Adds an FX6 (Level 3 class) to Ben's Green screen interview, so the interview needs his Level 3 grant. */
+  const interviewNeedsLevel3 = (h: Harness) => {
+    const interview = h.db
+      .select()
+      .from(s.events)
+      .where(eq(s.events.title, "Green screen interview"))
+      .get()!
+    h.db
+      .insert(s.equipmentLines)
+      .values({ eventId: interview.id, equipmentTypeId: ids(h).fx6, qty: 1 })
+      .run()
+  }
+
+  // Seed: Ben has Level 2 from FILM 201 and a manual Level 3 grant ending in 5 days;
+  // his Green screen interview (Studio C, lighting: Level 2) is on day 6.
+  it("tells the student and the sponsor once when a request depends on a grant ending within 7 days", async () => {
+    const h = createHarness()
+    pinNoon()
+    interviewNeedsLevel3(h)
+    const nguyen = h.db
+      .select()
+      .from(s.users)
+      .where(eq(s.users.email, "minh.nguyen@university.edu"))
+      .get()!
+
+    runJobs(h.db)
+    runJobs(h.db)
+    const sent = warned(h)
+    expect(sent.map((n) => n.recipientId).sort()).toEqual(
+      [ids(h).ben, nguyen.id].sort()
+    )
+    expect(sent[0]!.body).toContain("Green screen interview")
+    expect(bensManualGrant(h).expiryWarnedAt).not.toBeNull()
+  })
+
+  it("says nothing when the request does not need the expiring grant", async () => {
+    const h = createHarness()
+    pinNoon()
+    // As seeded, Ben's Level 2 still covers the interview.
+    runJobs(h.db)
+    expect(warned(h)).toEqual([])
+  })
+
+  it("says nothing when the grant still covers the request's last day", async () => {
+    const h = createHarness()
+    pinNoon()
+    interviewNeedsLevel3(h)
+    // valid_until is inclusive: a grant ending on the interview day covers it.
+    h.db
+      .update(s.levelGrants)
+      .set({ validUntil: dayPlus(today(), 6) })
+      .where(eq(s.levelGrants.id, bensManualGrant(h).id))
+      .run()
+    runJobs(h.db)
+    expect(warned(h)).toEqual([])
+  })
+})
+
+describe("results retention (BR-008-09)", () => {
+  it("warns the requester and sponsor once in the last 30 days, then expires the package", async () => {
+    const h = createHarness()
+    const i = ids(h)
+    pinNoon()
+    const day = dayPlus(today(), 5)
+    const id = await confirmed(h, day)
+    setNow(at(day, "13:45"))
+    expect((await checkoutAll(h, id, { xlrQty: 2 })).status).toBe(200)
+    setNow(at(day, "15:30"))
+    runJobs(h.db)
+    const sam = await h.as("sam.staff")
+    const items = (await sam.get(`/api/checkout/${id}`)).body.outstanding.map(
+      (r: { recordId: string; assetTag: string | null; qty: number }) =>
+        r.assetTag
+          ? { recordId: r.recordId, condition: "ok" }
+          : { recordId: r.recordId, qtyOk: r.qty }
+    )
+    expect(
+      (await sam.post(`/api/checkout/${id}/checkin`, { items })).body.complete
+    ).toBe(true)
+
+    const alice = await h.as("alice.student")
+    const pkg = async () => (await alice.get(`/api/results/events/${id}`)).body
+    const published = await pkg()
+    expect(published.status).toBe("published")
+    const retainUntil = Date.parse(published.retainUntil)
+    expect(retainUntil - Date.parse(published.publishedAt)).toBe(
+      365 * 24 * HOUR
+    )
+
+    const reminded = () =>
+      h.db
+        .select()
+        .from(s.notifications)
+        .where(eq(s.notifications.code, "RESULTS_EXPIRING"))
+        .all()
+        .map((n) => n.recipientId)
+        .sort()
+    setNow(new Date(retainUntil - 31 * 24 * HOUR).toISOString())
+    runJobs(h.db)
+    expect(reminded()).toEqual([])
+
+    setNow(new Date(retainUntil - 29 * 24 * HOUR).toISOString())
+    runJobs(h.db)
+    runJobs(h.db)
+    expect(reminded()).toEqual([i.alice, i.priya].sort())
+    expect((await pkg()).status).toBe("published")
+
+    setNow(new Date(retainUntil + 60_000).toISOString())
+    runJobs(h.db)
+    expect((await pkg()).status).toBe("expired")
   })
 })
