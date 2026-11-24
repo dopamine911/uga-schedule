@@ -50,7 +50,10 @@ const linkBody = z.object({
 const signoffBody = z.object({ comment: z.string().default("") })
 const publishBody = z.object({ overrideReason: z.string().trim().optional() })
 
-/** Who may view a package (BR-008-05): studio staff, EM, admin; the requester while collecting if allowed to upload. */
+/**
+ * Who may view a package (BR-008-05): studio staff, EM, admin; while collecting, the requester if allowed to upload
+ * and the sponsor if their sign-off is required (BR-008-06).
+ */
 function canViewPackage(
   db: DB,
   user: SessionUser,
@@ -59,8 +62,13 @@ function canViewPackage(
 ): boolean {
   if (can(user, "results.view", { studioId: ev.studioId })) return true
   const requester = ev.requesterId === user.id
-  if (pkg.status === "collecting")
-    return requester && typeOf(db, ev.eventTypeId).requesterCanUpload
+  if (pkg.status === "collecting") {
+    const type = typeOf(db, ev.eventTypeId)
+    return (
+      (requester && type.requesterCanUpload) ||
+      (ev.sponsorId === user.id && type.requiresSponsorSignoff)
+    )
+  }
   return (
     requester ||
     ev.sponsorId === user.id ||

@@ -196,7 +196,8 @@ export function seed(db: DB): void {
     enroll(film101!.id, l1!.id, alice!.id)
     enroll(film201!.id, l2!.id, ben!.id)
     enroll(film301!.id, l3!.id, chloe!.id)
-    // Manual grant expiring soon, to demo BR-002-10.
+    // Manual Level 3 grant ending the day before Ben's Green screen interview, which books a
+    // Level 3 FX6: the first job run sends GRANT_EXPIRING to Ben and his sponsor (BR-002-10).
     t.insert(s.levelGrants)
       .values({
         userId: ben!.id,
@@ -470,6 +471,8 @@ export function seed(db: DB): void {
       [
         { equipmentTypeId: aputure.id, qty: 2 },
         { equipmentTypeId: cstand.id, qty: 2 },
+        // Level 3 class: depends on Ben's expiring manual grant (BR-002-10 demo).
+        { equipmentTypeId: fx6.id, qty: 1 },
       ]
     )
     const thesisEvent = mkEvent(

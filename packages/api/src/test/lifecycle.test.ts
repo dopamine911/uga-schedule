@@ -332,7 +332,7 @@ describe("expiry (US-006-07)", () => {
 })
 
 describe("late return, hold and submission block (US-007-03)", () => {
-  it("places a LATE_RETURN hold that blocks the next submission", async () => {
+  it("places a LATE_RETURN hold that blocks submissions until it clears itself", async () => {
     const h = createHarness()
     const i = ids(h)
     pinNoon()
@@ -353,14 +353,26 @@ describe("late return, hold and submission block (US-007-03)", () => {
     const checkin = await sam.post(`/api/checkout/${id}/checkin`, { items })
     expect(checkin.status).toBe(200)
 
-    const holds = h.db
+    const lateHold = () =>
+      h.db
+        .select()
+        .from(s.holds)
+        .where(
+          and(eq(s.holds.userId, i.alice), eq(s.holds.reason, "LATE_RETURN"))
+        )
+        .get()!
+    // BR-007-10: clears 7 days (LATE_HOLD_CLEAR_DAYS) after the last item came back.
+    const returnedAt = h.db
       .select()
-      .from(s.holds)
-      .where(eq(s.holds.userId, i.alice))
+      .from(s.checkoutRecords)
+      .where(eq(s.checkoutRecords.eventId, id))
       .all()
-    const late = holds.find((x) => x.reason === "LATE_RETURN")
-    expect(late?.status).toBe("active")
-    expect(late?.autoClearAt).toBeTruthy()
+      .map((r) => r.inAt!)
+      .sort()
+      .at(-1)!
+    const clearsAt = new Date(Date.parse(returnedAt) + 7 * 24 * HOUR)
+    expect(lateHold().status).toBe("active")
+    expect(lateHold().autoClearAt).toBe(clearsAt.toISOString())
 
     const alice = await h.as("alice.student")
     const next = await alice.post(
@@ -370,6 +382,21 @@ describe("late return, hold and submission block (US-007-03)", () => {
     const submit = await alice.post(`/api/events/${next.body.id}/submit`, {})
     expect(submit.status).toBe(409)
     expect(submit.body.error.code).toBe("HOLD_ACTIVE")
+
+    // The hold outlasts the jobs until its clear time, then lifts by itself and stops blocking.
+    setNow(new Date(clearsAt.getTime() - 60_000).toISOString())
+    runJobs(h.db)
+    expect(lateHold().status).toBe("active")
+    setNow(new Date(clearsAt.getTime() + 60_000).toISOString())
+    expect(runJobs(h.db).late_holds_cleared).toBe(1)
+    expect(lateHold()).toMatchObject({ status: "cleared", clearedBy: null })
+    const later = await alice.post(
+      "/api/events",
+      podcastDraft(i, dayPlus(today(), 5), "10:00", "11:00", "Later")
+    )
+    expect(
+      (await alice.post(`/api/events/${later.body.id}/submit`, {})).status
+    ).toBe(200)
   })
 })
 
@@ -671,5 +698,439 @@ describe("calendar feed access (BR-009-06, BR-001-09)", () => {
         .status
     ).toBe(200)
     expect((await h.app.request(path)).status).toBe(404)
+  })
+})
+
+describe("clearing holds (BR-007-11)", () => {
+  const holdsOf = (h: Harness, userId: string) =>
+    h.db.select().from(s.holds).where(eq(s.holds.userId, userId)).all()
+  const reviewReasonsOfEpisode4 = (h: Harness) =>
+    h.db
+      .select()
+      .from(s.events)
+      .where(eq(s.events.title, "Episode 4: Campus Food"))
+      .get()!.reviewReasons
+  const placeHold = async (h: Harness, userId: string, note: string) => {
+    const placed = await (
+      await h.as("sam.staff")
+    ).post("/api/holds", {
+      userId,
+      note,
+    })
+    expect(placed.status).toBe(201)
+    return placed.body.id as string
+  }
+
+  it("lets only equipment managers and admins clear a hold", async () => {
+    const h = createHarness()
+    const i = ids(h)
+    const holdId = await placeHold(h, i.alice, "Left the booth unlocked")
+    const path = `/api/holds/${holdId}/clear`
+    const reason = { reason: "Spoke with the student" }
+
+    // The student under the hold, the staff member who placed it, and her sponsor may not lift it.
+    for (const who of ["alice.student", "sam.staff", "priya.patel"]) {
+      const res = await (await h.as(who)).post(path, reason)
+      expect(res.status, who).toBe(403)
+    }
+    expect(holdsOf(h, i.alice).map((x) => x.status)).toEqual(["active"])
+
+    const eli = await h.as("eli.manager")
+    expect((await eli.post(path, reason)).status).toBe(200)
+    expect(holdsOf(h, i.alice)).toMatchObject([
+      {
+        status: "cleared",
+        clearedBy: eli.user.id,
+        clearedReason: "Spoke with the student",
+      },
+    ])
+    const again = await (await h.as("ada.admin")).post(path, reason)
+    expect(again.status).toBe(409)
+    expect(again.body.error.code).toBe("NOT_ACTIVE")
+  })
+
+  it("drops HOLD_ACTIVE from the student's requests only once her last hold clears", async () => {
+    const h = createHarness()
+    const i = ids(h)
+    pinNoon()
+    const first = await placeHold(h, i.alice, "Left the booth unlocked")
+    const second = await placeHold(h, i.alice, "Returned a cable damaged")
+    expect(reviewReasonsOfEpisode4(h)).toContain("HOLD_ACTIVE")
+
+    const eli = await h.as("eli.manager")
+    const clear = (id: string) =>
+      eli.post(`/api/holds/${id}/clear`, { reason: "Resolved" })
+    expect((await clear(first)).status).toBe(200)
+    expect(reviewReasonsOfEpisode4(h)).toContain("HOLD_ACTIVE")
+
+    expect((await clear(second)).status).toBe(200)
+    expect(reviewReasonsOfEpisode4(h)).not.toContain("HOLD_ACTIVE")
+    const alice = await h.as("alice.student")
+    const next = await alice.post(
+      "/api/events",
+      podcastDraft(i, dayPlus(today(), 12), "10:00", "11:00", "Next")
+    )
+    expect(
+      (await alice.post(`/api/events/${next.body.id}/submit`, {})).status
+    ).toBe(200)
+  })
+})
+
+describe("checkout rejects the wrong unit (BR-007-04)", () => {
+  /** A confirmed podcast (2 × SM7B, 2 × XLR) at its pickup time, with sam's checkout view. */
+  async function atPickup(h: Harness) {
+    pinNoon()
+    const day = dayPlus(today(), 5)
+    const id = await confirmed(h, day)
+    setNow(at(day, "13:45"))
+    const sam = await h.as("sam.staff")
+    const view = await sam.get(`/api/checkout/${id}`)
+    expect(view.status).toBe(200)
+    const lineOf = (typeId: string) =>
+      view.body.lines.find(
+        (l: { equipmentTypeId: string }) => l.equipmentTypeId === typeId
+      ).lineId as string
+    return { id, sam, lineOf }
+  }
+  const unitsOf = (h: Harness, typeId: string) =>
+    h.db
+      .select()
+      .from(s.equipmentUnits)
+      .where(eq(s.equipmentUnits.typeId, typeId))
+      .all()
+  const unitById = (h: Harness, id: string) =>
+    h.db
+      .select()
+      .from(s.equipmentUnits)
+      .where(eq(s.equipmentUnits.id, id))
+      .get()!
+  const nothingCheckedOut = async (h: Harness, sam: Client, id: string) => {
+    expect((await sam.get(`/api/events/${id}`)).body.state).toBe("Confirmed")
+    expect(
+      h.db
+        .select()
+        .from(s.checkoutRecords)
+        .where(eq(s.checkoutRecords.eventId, id))
+        .all()
+    ).toEqual([])
+  }
+
+  it("refuses a unit of another equipment type on a line", async () => {
+    const h = createHarness()
+    const i = ids(h)
+    const { id, sam, lineOf } = await atPickup(h)
+    const light = unitsOf(h, i.aputure)[0]!
+
+    const res = await sam.post(`/api/checkout/${id}`, {
+      acknowledged: true,
+      lines: [{ lineId: lineOf(i.sm7b), unitIds: [light.id] }],
+    })
+    expect(res.status).toBe(400)
+    expect(res.body.error.code).toBe("UNIT_TYPE_MISMATCH")
+    expect(unitById(h, light.id).status).toBe("available")
+    await nothingCheckedOut(h, sam, id)
+  })
+
+  it("refuses a unit that is not available and checks out nothing else in the request", async () => {
+    const h = createHarness()
+    const i = ids(h)
+    const { id, sam, lineOf } = await atPickup(h)
+    const [good, broken] = unitsOf(h, i.sm7b)
+    const eli = await h.as("eli.manager")
+    expect(
+      (
+        await eli.post(`/api/equipment/units/${broken!.id}/status`, {
+          status: "damaged",
+          reason: "Grille dented",
+        })
+      ).status
+    ).toBe(200)
+
+    const res = await sam.post(`/api/checkout/${id}`, {
+      acknowledged: true,
+      lines: [{ lineId: lineOf(i.sm7b), unitIds: [good!.id, broken!.id] }],
+    })
+    expect(res.status).toBe(409)
+    expect(res.body.error.code).toBe("UNIT_UNAVAILABLE")
+    // The good unit was processed first; the whole checkout must roll back.
+    expect(unitById(h, good!.id).status).toBe("available")
+    await nothingCheckedOut(h, sam, id)
+  })
+})
+
+describe("publishing results (BR-008-06, BR-008-07)", () => {
+  /** Runs the seeded thesis (Studio B, sponsor Priya; requires results and sponsor sign-off) to PostEvent with nothing out. */
+  async function thesisAwaitingResults(h: Harness) {
+    const thesis = h.db
+      .select()
+      .from(s.events)
+      .where(eq(s.events.title, "Thesis: The Last Projectionist"))
+      .get()!
+    const days = h.db
+      .select()
+      .from(s.eventDays)
+      .where(eq(s.eventDays.eventId, thesis.id))
+      .all()
+    const start = days.map((d) => d.startsAt).sort()[0]!
+    const end = days
+      .map((d) => d.endsAt)
+      .sort()
+      .at(-1)!
+    const tara = await h.as("tara.tech")
+    setNow(new Date(Date.parse(start) - 10 * 60_000).toISOString())
+    const out = await tara.post(`/api/checkout/${thesis.id}`, {
+      acknowledged: true,
+      lines: [],
+      taskOverrideReason: "Briefing done in person",
+    })
+    expect(out.status).toBe(200)
+    setNow(new Date(Date.parse(end) + 60_000).toISOString())
+    runJobs(h.db)
+    expect((await tara.get(`/api/events/${thesis.id}`)).body.state).toBe(
+      "PostEvent"
+    )
+    const id = thesis.id
+    return {
+      id,
+      tara,
+      priya: await h.as("priya.patel"),
+      publish: (body: { overrideReason?: string } = {}) =>
+        tara.post(`/api/results/events/${id}/publish`, body),
+      status: async () =>
+        (await tara.get(`/api/results/events/${id}`)).body.status as string,
+      addResult: async () =>
+        expect(
+          (
+            await tara.post(`/api/results/events/${id}/items`, {
+              kind: "link",
+              title: "Final cut",
+              url: "https://example.edu/final-cut",
+            })
+          ).status
+        ).toBe(201),
+    }
+  }
+
+  it("holds publication until the sponsor signs off, even with a reason", async () => {
+    const h = createHarness()
+    const t = await thesisAwaitingResults(h)
+    await t.addResult()
+
+    for (const body of [{}, { overrideReason: "Sponsor is travelling" }]) {
+      const res = await t.publish(body)
+      expect(res.status).toBe(409)
+      expect(res.body.error.code).toBe("SIGNOFF_PENDING")
+    }
+    expect(await t.status()).toBe("collecting")
+
+    expect(
+      (
+        await t.priya.post(`/api/results/events/${t.id}/signoff`, {
+          comment: "Approved for the archive",
+        })
+      ).status
+    ).toBe(200)
+    expect((await t.publish()).status).toBe(200)
+    expect(await t.status()).toBe("published")
+  })
+
+  it("lets staff publish without sign-off once the override time has passed, with a reason", async () => {
+    const h = createHarness()
+    const t = await thesisAwaitingResults(h)
+    await t.addResult()
+    const overrideAt = (await t.tara.get(`/api/results/events/${t.id}`)).body
+      .signoffOverrideAt as string
+
+    setNow(new Date(Date.parse(overrideAt) - 60_000).toISOString())
+    expect((await t.publish()).body.error.code).toBe("SIGNOFF_PENDING")
+
+    setNow(overrideAt)
+    const bare = await t.publish()
+    expect(bare.status).toBe(409)
+    expect(bare.body.error).toMatchObject({
+      code: "OVERRIDE_REASON_REQUIRED",
+      details: { reasons: ["sponsor sign-off pending"] },
+    })
+    expect(
+      (await t.publish({ overrideReason: "Sponsor on sabbatical" })).status
+    ).toBe(200)
+    expect(await t.status()).toBe("published")
+  })
+
+  it("requires a reason to publish with no results uploaded, and records it", async () => {
+    const h = createHarness()
+    const t = await thesisAwaitingResults(h)
+    expect(
+      (
+        await t.priya.post(`/api/results/events/${t.id}/signoff`, {
+          comment: "",
+        })
+      ).status
+    ).toBe(200)
+
+    for (const body of [{}, { overrideReason: "   " }]) {
+      const res = await t.publish(body)
+      expect(res.status).toBe(409)
+      expect(res.body.error).toMatchObject({
+        code: "OVERRIDE_REASON_REQUIRED",
+        details: { reasons: ["no results uploaded"] },
+      })
+    }
+    expect(await t.status()).toBe("collecting")
+
+    const ok = await t.publish({
+      overrideReason: "Footage handed over on drive",
+    })
+    expect(ok.status).toBe(200)
+    const pkg = h.db
+      .select()
+      .from(s.resultPackages)
+      .where(eq(s.resultPackages.eventId, t.id))
+      .get()!
+    expect(pkg.status).toBe("published")
+    expect(pkg.publishOverrideReason).toBe("Footage handed over on drive")
+  })
+})
+
+describe("grant expiry warning (BR-002-10)", () => {
+  const warned = (h: Harness) =>
+    h.db
+      .select()
+      .from(s.notifications)
+      .where(eq(s.notifications.code, "GRANT_EXPIRING"))
+      .all()
+  const bensManualGrant = (h: Harness) =>
+    h.db
+      .select()
+      .from(s.levelGrants)
+      .where(
+        and(
+          eq(s.levelGrants.userId, ids(h).ben),
+          eq(s.levelGrants.source, "manual")
+        )
+      )
+      .get()!
+
+  /** Removes the FX6 (Level 3) line, leaving lighting that Ben's Level 2 from FILM 201 covers. */
+  const interviewWithoutLevel3 = (h: Harness) => {
+    const interview = h.db
+      .select()
+      .from(s.events)
+      .where(eq(s.events.title, "Green screen interview"))
+      .get()!
+    h.db
+      .delete(s.equipmentLines)
+      .where(
+        and(
+          eq(s.equipmentLines.eventId, interview.id),
+          eq(s.equipmentLines.equipmentTypeId, ids(h).fx6)
+        )
+      )
+      .run()
+  }
+
+  // Seed: Ben's manual Level 3 grant ends on day 5; his Green screen interview on day 6 books an FX6 (Level 3).
+  it("tells the student and the sponsor once when a request depends on a grant ending within 7 days", async () => {
+    const h = createHarness()
+    pinNoon()
+    const nguyen = h.db
+      .select()
+      .from(s.users)
+      .where(eq(s.users.email, "minh.nguyen@university.edu"))
+      .get()!
+
+    runJobs(h.db)
+    runJobs(h.db)
+    const sent = warned(h)
+    expect(sent.map((n) => n.recipientId).sort()).toEqual(
+      [ids(h).ben, nguyen.id].sort()
+    )
+    const end = dayPlus(today(), 5)
+    const to = (id: string) => sent.find((n) => n.recipientId === id)!
+    expect(to(ids(h).ben).body).toBe(
+      `Your Level 3 – Advanced access ends on ${end}. Affected requests: Green screen interview.`
+    )
+    // The sponsor is told whose access ends, not "your access".
+    expect(to(nguyen.id)).toMatchObject({
+      subject: "Ben Student's level grant is about to expire",
+      body: `Ben Student's Level 3 – Advanced access ends on ${end}. Affected requests you sponsor: Green screen interview.`,
+    })
+    expect(bensManualGrant(h).expiryWarnedAt).not.toBeNull()
+  })
+
+  it("says nothing when the request does not need the expiring grant", async () => {
+    const h = createHarness()
+    pinNoon()
+    interviewWithoutLevel3(h)
+    runJobs(h.db)
+    expect(warned(h)).toEqual([])
+  })
+
+  it("says nothing when the grant still covers the request's last day", async () => {
+    const h = createHarness()
+    pinNoon()
+    // valid_until is inclusive: a grant ending on the interview day covers it.
+    h.db
+      .update(s.levelGrants)
+      .set({ validUntil: dayPlus(today(), 6) })
+      .where(eq(s.levelGrants.id, bensManualGrant(h).id))
+      .run()
+    runJobs(h.db)
+    expect(warned(h)).toEqual([])
+  })
+})
+
+describe("results retention (BR-008-09)", () => {
+  it("warns the requester and sponsor once in the last 30 days, then expires the package", async () => {
+    const h = createHarness()
+    const i = ids(h)
+    pinNoon()
+    const day = dayPlus(today(), 5)
+    const id = await confirmed(h, day)
+    setNow(at(day, "13:45"))
+    expect((await checkoutAll(h, id, { xlrQty: 2 })).status).toBe(200)
+    setNow(at(day, "15:30"))
+    runJobs(h.db)
+    const sam = await h.as("sam.staff")
+    const items = (await sam.get(`/api/checkout/${id}`)).body.outstanding.map(
+      (r: { recordId: string; assetTag: string | null; qty: number }) =>
+        r.assetTag
+          ? { recordId: r.recordId, condition: "ok" }
+          : { recordId: r.recordId, qtyOk: r.qty }
+    )
+    expect(
+      (await sam.post(`/api/checkout/${id}/checkin`, { items })).body.complete
+    ).toBe(true)
+
+    const alice = await h.as("alice.student")
+    const pkg = async () => (await alice.get(`/api/results/events/${id}`)).body
+    const published = await pkg()
+    expect(published.status).toBe("published")
+    const retainUntil = Date.parse(published.retainUntil)
+    expect(retainUntil - Date.parse(published.publishedAt)).toBe(
+      365 * 24 * HOUR
+    )
+
+    const reminded = () =>
+      h.db
+        .select()
+        .from(s.notifications)
+        .where(eq(s.notifications.code, "RESULTS_EXPIRING"))
+        .all()
+        .map((n) => n.recipientId)
+        .sort()
+    setNow(new Date(retainUntil - 31 * 24 * HOUR).toISOString())
+    runJobs(h.db)
+    expect(reminded()).toEqual([])
+
+    setNow(new Date(retainUntil - 29 * 24 * HOUR).toISOString())
+    runJobs(h.db)
+    runJobs(h.db)
+    expect(reminded()).toEqual([i.alice, i.priya].sort())
+    expect((await pkg()).status).toBe("published")
+
+    setNow(new Date(retainUntil + 60_000).toISOString())
+    runJobs(h.db)
+    expect((await pkg()).status).toBe("expired")
   })
 })
