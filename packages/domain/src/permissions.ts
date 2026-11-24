@@ -86,11 +86,16 @@ const MATRIX: Record<RoleCode, Partial<Record<Permission, Scope>>> = {
     "user.list": "all",
   },
   // Admin holds every permission unrestricted.
-  ADMIN: Object.fromEntries(PERMISSIONS.map((p) => [p, "all"])) as Record<Permission, Scope>,
+  ADMIN: Object.fromEntries(PERMISSIONS.map((p) => [p, "all"])) as Record<
+    Permission,
+    Scope
+  >,
 }
 
 /** What a role may do and in which scope (read-only view of the F-001 matrix, for admin screens). */
-export function rolePermissions(role: RoleCode): Partial<Record<Permission, Scope>> {
+export function rolePermissions(
+  role: RoleCode
+): Partial<Record<Permission, Scope>> {
   return MATRIX[role]
 }
 
@@ -122,11 +127,16 @@ export interface PermissionContext {
 }
 
 function deniedEverywhere(p: Principal, perm: Permission): boolean {
-  return p.denied?.some((d) => d.permission === perm && d.studioId === null) ?? false
+  return (
+    p.denied?.some((d) => d.permission === perm && d.studioId === null) ?? false
+  )
 }
 
 function deniedAt(p: Principal, perm: Permission, studioId: string): boolean {
-  return p.denied?.some((d) => d.permission === perm && d.studioId === studioId) ?? false
+  return (
+    p.denied?.some((d) => d.permission === perm && d.studioId === studioId) ??
+    false
+  )
 }
 
 /**
@@ -134,7 +144,9 @@ function deniedAt(p: Principal, perm: Permission, studioId: string): boolean {
  * rely on hasUnscoped() must drop records in these studios.
  */
 export function deniedStudios(p: Principal, perm: Permission): string[] {
-  return (p.denied ?? []).filter((d) => d.permission === perm && d.studioId !== null).map((d) => d.studioId as string)
+  return (p.denied ?? [])
+    .filter((d) => d.permission === perm && d.studioId !== null)
+    .map((d) => d.studioId as string)
 }
 
 /**
@@ -142,18 +154,32 @@ export function deniedStudios(p: Principal, perm: Permission): string[] {
  * Without a context, answers "does the user hold this permission in any scope" (useful for menus).
  * A studio removal blocks that studio's records whichever role grants access, including "all" scope.
  */
-export function can(p: Principal, perm: Permission, ctx?: PermissionContext): boolean {
+export function can(
+  p: Principal,
+  perm: Permission,
+  ctx?: PermissionContext
+): boolean {
   if (deniedEverywhere(p, perm)) return false
   if (ctx?.studioId != null && deniedAt(p, perm, ctx.studioId)) return false
   for (const a of p.roles) {
     const scope = MATRIX[a.role][perm]
     if (!scope) continue
     // A studio-scoped grant whose studio was removed grants nothing.
-    if (scope === "studio" && a.studioId != null && deniedAt(p, perm, a.studioId)) continue
+    if (
+      scope === "studio" &&
+      a.studioId != null &&
+      deniedAt(p, perm, a.studioId)
+    )
+      continue
     if (!ctx) return true
     if (scope === "all") return true
     if (scope === "own" && ctx.own) return true
-    if (scope === "studio" && ctx.studioId != null && a.studioId === ctx.studioId) return true
+    if (
+      scope === "studio" &&
+      ctx.studioId != null &&
+      a.studioId === ctx.studioId
+    )
+      return true
   }
   return false
 }
@@ -162,19 +188,28 @@ export function can(p: Principal, perm: Permission, ctx?: PermissionContext): bo
 export function studiosFor(p: Principal, perm: Permission): string[] {
   if (deniedEverywhere(p, perm)) return []
   return p.roles
-    .filter((a) => MATRIX[a.role][perm] === "studio" && a.studioId && !deniedAt(p, perm, a.studioId))
+    .filter(
+      (a) =>
+        MATRIX[a.role][perm] === "studio" &&
+        a.studioId &&
+        !deniedAt(p, perm, a.studioId)
+    )
     .map((a) => a.studioId as string)
 }
 
 /** Holds the permission in "all" scope. Callers listing records must still exclude deniedStudios(). */
 export function hasUnscoped(p: Principal, perm: Permission): boolean {
-  return !deniedEverywhere(p, perm) && p.roles.some((a) => MATRIX[a.role][perm] === "all")
+  return (
+    !deniedEverywhere(p, perm) &&
+    p.roles.some((a) => MATRIX[a.role][perm] === "all")
+  )
 }
 
 /** Permissions that some role grants per studio; only these can be removed for a single studio. */
-export const STUDIO_SCOPED_PERMISSIONS: readonly Permission[] = PERMISSIONS.filter((perm) =>
-  Object.values(MATRIX).some((grants) => grants[perm] === "studio"),
-)
+export const STUDIO_SCOPED_PERMISSIONS: readonly Permission[] =
+  PERMISSIONS.filter((perm) =>
+    Object.values(MATRIX).some((grants) => grants[perm] === "studio")
+  )
 
 export interface PermissionGrant {
   permission: Permission

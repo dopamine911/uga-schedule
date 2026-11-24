@@ -18,11 +18,19 @@ export interface BulkLike {
  * Units that count toward bookable capacity for a window starting at `windowStartDay`.
  * available + in_use count; in_repair counts only when expected back at least one day before the window.
  */
-export function serializedCapacity(units: readonly UnitLike[], windowStartDay: string): number {
+export function serializedCapacity(
+  units: readonly UnitLike[],
+  windowStartDay: string
+): number {
   let n = 0
   for (const u of units) {
     if (u.status === "available" || u.status === "in_use") n++
-    else if (u.status === "in_repair" && u.expectedBack && u.expectedBack < windowStartDay) n++
+    else if (
+      u.status === "in_repair" &&
+      u.expectedBack &&
+      u.expectedBack < windowStartDay
+    )
+      n++
   }
   return n
 }
@@ -43,7 +51,7 @@ export function reservedQty(
   reservations: readonly Reservation[],
   typeId: string,
   window: Interval,
-  excludeEventId?: string,
+  excludeEventId?: string
 ): number {
   let n = 0
   for (const r of reservations) {

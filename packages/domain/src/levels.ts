@@ -20,14 +20,21 @@ export function grantActiveOn(g: GrantLike, day: LocalDate): boolean {
 }
 
 /** Highest rank among grants active on `day`; 0 when none. Higher levels include lower (D-02). */
-export function effectiveLevel(grants: readonly GrantLike[], day: LocalDate): number {
+export function effectiveLevel(
+  grants: readonly GrantLike[],
+  day: LocalDate
+): number {
   let best = 0
-  for (const g of grants) if (grantActiveOn(g, day) && g.levelRank > best) best = g.levelRank
+  for (const g of grants)
+    if (grantActiveOn(g, day) && g.levelRank > best) best = g.levelRank
   return best
 }
 
 /** Minimum effective level over every event day (D-05: every day must be covered). */
-export function eventLevel(grants: readonly GrantLike[], days: readonly LocalDate[]): number {
+export function eventLevel(
+  grants: readonly GrantLike[],
+  days: readonly LocalDate[]
+): number {
   if (days.length === 0) return 0
   return Math.min(...days.map((d) => effectiveLevel(grants, d)))
 }
@@ -36,7 +43,7 @@ export function eventLevel(grants: readonly GrantLike[], days: readonly LocalDat
 export function firstUncoveredDay(
   grants: readonly GrantLike[],
   days: readonly LocalDate[],
-  requiredRank: number,
+  requiredRank: number
 ): LocalDate | null {
   for (const d of days) if (effectiveLevel(grants, d) < requiredRank) return d
   return null

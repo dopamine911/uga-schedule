@@ -1,0 +1,173 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/oswald";
+@import "@fontsource-variable/merriweather-sans";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * University of Georgia brand theme (brand.uga.edu/visual-identity/visual-style).
+ * Primary: Bulldog Red #BA0C2F, Arch Black #000000, Chapel Bell White #FFFFFF.
+ * Accents (≤20% of a design): Olympic #004E60, Odyssey #C8D8EB, Hedges #B4BD00, Glory Glory #E4002B.
+ * Neutrals: Creamery #D6D2C4, Stegeman #9EA2A2, Sanford #554F47.
+ * Type: Oswald (light/medium only) for headings, Merriweather Sans for interface text.
+ * Rule: never red text on black or black text on red; put white between them.
+ */
+
+@theme inline {
+  --font-heading: "Oswald Variable", "Oswald", sans-serif;
+  --font-sans: "Merriweather Sans Variable", "Merriweather Sans", sans-serif;
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-neutral: var(--neutral);
+  --color-neutral-foreground: var(--neutral-foreground);
+  --color-brand-black: var(--brand-black);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --brand-black: #000000;
+  --background: #f8f7f3;
+  --foreground: #1a1a1a;
+  --card: #ffffff;
+  --card-foreground: #1a1a1a;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a1a;
+  --primary: #ba0c2f;
+  --primary-foreground: #ffffff;
+  --secondary: #efede6;
+  --secondary-foreground: #3f3b35;
+  --muted: #f1efe9;
+  --muted-foreground: #5e5951;
+  --accent: #f7e6ea;
+  --accent-foreground: #8a0a23;
+  --destructive: #a50d2b;
+  --border: #e2ded3;
+  --input: #d6d2c4;
+  --ring: #ba0c2f;
+  /* Status tints (accent palette, text passes WCAG AA on its tint) */
+  --info: #e6eef8;
+  --info-foreground: #1d3d5c;
+  --success: #dcebee;
+  --success-foreground: #004e60;
+  --warning: #f1f3cc;
+  --warning-foreground: #4a4d00;
+  --neutral: #efede6;
+  --neutral-foreground: #554f47;
+  --chart-1: #ba0c2f;
+  --chart-2: #004e60;
+  --chart-3: #b4bd00;
+  --chart-4: #9eb8d8;
+  --chart-5: #554f47;
+  --radius: 0.5rem;
+  --sidebar: #000000;
+  --sidebar-foreground: #ededed;
+  --sidebar-primary: #ba0c2f;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1c1c1c;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #262626;
+  --sidebar-ring: #ffffff;
+}
+
+.dark {
+  --brand-black: #000000;
+  --background: #0f0f0f;
+  --foreground: #f2f1ee;
+  --card: #181818;
+  --card-foreground: #f2f1ee;
+  --popover: #181818;
+  --popover-foreground: #f2f1ee;
+  --primary: #d01639;
+  --primary-foreground: #ffffff;
+  --secondary: #26241f;
+  --secondary-foreground: #e6e2d8;
+  --muted: #222120;
+  --muted-foreground: #aaa59b;
+  --accent: #3a1018;
+  --accent-foreground: #ffd9df;
+  --destructive: #ff6b81;
+  --border: rgb(255 255 255 / 10%);
+  --input: rgb(255 255 255 / 16%);
+  --ring: #e4002b;
+  --info: #1b2a3a;
+  --info-foreground: #c8d8eb;
+  --success: #0b2e36;
+  --success-foreground: #8fd3e2;
+  --warning: #2c2e08;
+  --warning-foreground: #dfe57a;
+  --neutral: #26241f;
+  --neutral-foreground: #d6d2c4;
+  --chart-1: #e4002b;
+  --chart-2: #2a8ca3;
+  --chart-3: #b4bd00;
+  --chart-4: #c8d8eb;
+  --chart-5: #9ea2a2;
+  --sidebar: #000000;
+  --sidebar-foreground: #ededed;
+  --sidebar-primary: #d01639;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1c1c1c;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #262626;
+  --sidebar-ring: #ffffff;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-heading;
+  }
+}

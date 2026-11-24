@@ -28,7 +28,11 @@ export function timeOf(minutes: number): LocalTime {
 }
 
 /** Campus wall-clock date+time → UTC ISO instant. DST-aware. */
-export function localToUtc(day: LocalDate, time: LocalTime, tz: string): string {
+export function localToUtc(
+  day: LocalDate,
+  time: LocalTime,
+  tz: string
+): string {
   const [y, mo, d] = day.split("-").map(Number)
   const [h, mi] = time.split(":").map(Number)
   const zoned = new TZDate(y!, mo! - 1, d!, h!, mi!, tz)
@@ -58,7 +62,9 @@ export function weekdayOf(day: LocalDate): number {
 }
 
 export function nextDay(day: LocalDate): LocalDate {
-  return addDays(new Date(`${day}T12:00:00Z`), 1).toISOString().slice(0, 10)
+  return addDays(new Date(`${day}T12:00:00Z`), 1)
+    .toISOString()
+    .slice(0, 10)
 }
 
 /** ISO week key such as "2027-W14", used for the WEEKLY_HOURS policy. */
@@ -83,5 +89,8 @@ export interface Interval {
 /** Half-open overlap test; `bufferMinutes` is appended to the end of `b` and `a` (turnaround). */
 export function overlaps(a: Interval, b: Interval, bufferMinutes = 0): boolean {
   const pad = bufferMinutes * 60_000
-  return Date.parse(a.start) < Date.parse(b.end) + pad && Date.parse(b.start) < Date.parse(a.end) + pad
+  return (
+    Date.parse(a.start) < Date.parse(b.end) + pad &&
+    Date.parse(b.start) < Date.parse(a.end) + pad
+  )
 }

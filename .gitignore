@@ -4,5 +4,5 @@ dist/
 *.db-journal
 *.db-wal
 *.db-shm
-apps/api/data/
+packages/api/data/
 .env
