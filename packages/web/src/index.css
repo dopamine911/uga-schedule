@@ -18,7 +18,7 @@
  *   --brand-red   Bulldog Red, identity only: the logo tile. Never on controls or status.
  *   --primary     Arch Black: buttons, selected states, emphasis. Clickable, not urgent.
  *   --destructive Red: needs action now (overdue, blocked, failed checks) and destructive actions.
- *   --warning     Amber-olive: due soon / needs a look.
+ *   --warning     Amber: due soon / needs you. (Was Hedges olive, which read as muddy, not as "look here".)
  *   --info        Blue: waiting on someone else.
  *   --success     Olympic teal: booked, confirmed, done well.
  *   --live        Green: happening right now.
@@ -109,8 +109,8 @@
   --info-foreground: #1d3d5c;
   --success: #dcebee;
   --success-foreground: #004e60;
-  --warning: #f1f3cc;
-  --warning-foreground: #4a4d00;
+  --warning: #fff1d1;
+  --warning-foreground: #774600;
   --neutral: #eceef1;
   --neutral-foreground: #4a5058;
   --live: #e0f2e6;
@@ -157,8 +157,8 @@
   --info-foreground: #c8d8eb;
   --success: #0b2e36;
   --success-foreground: #8fd3e2;
-  --warning: #2c2e08;
-  --warning-foreground: #dfe57a;
+  --warning: #3a2806;
+  --warning-foreground: #ffd27a;
   --neutral: #26241f;
   --neutral-foreground: #d6d2c4;
   --live: #0f3320;
