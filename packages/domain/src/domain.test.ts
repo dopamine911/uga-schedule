@@ -2,15 +2,19 @@ import { describe, expect, it } from "vitest"
 import {
   type SubmissionContext,
   can,
+  deniedStudios,
   editAction,
+  effectivePermissions,
   effectiveLevel,
   eventLevel,
+  hasUnscoped,
   localToUtc,
   nextState,
   planStages,
   reservedQty,
   serializedCapacity,
   softCodes,
+  studiosFor,
   utcToLocal,
   validateSubmission,
 } from "./index.ts"
@@ -217,15 +221,65 @@ describe("planStages (F-005)", () => {
 
 describe("permissions (F-001)", () => {
   it("limits studio staff to their studio", () => {
-    const staff = [{ role: "STUDIO_STAFF" as const, studioId: "A" }]
+    const staff = { roles: [{ role: "STUDIO_STAFF" as const, studioId: "A" }] }
     expect(can(staff, "event.staff_decide", { studioId: "A" })).toBe(true)
     expect(can(staff, "event.staff_decide", { studioId: "B" })).toBe(false)
     expect(can(staff, "grant.manage")).toBe(false)
   })
 
   it("limits students to their own records", () => {
-    const stu = [{ role: "STUDENT" as const, studioId: null }]
+    const stu = { roles: [{ role: "STUDENT" as const, studioId: null }] }
     expect(can(stu, "event.view", { own: true })).toBe(true)
     expect(can(stu, "event.view", { own: false, studioId: "A" })).toBe(false)
+  })
+
+  it("removes an individually denied permission in every scope, whatever roles grant it (BR-001-14)", () => {
+    const sam = {
+      roles: [
+        { role: "STUDIO_STAFF" as const, studioId: "A" },
+        { role: "EQUIPMENT_MANAGER" as const, studioId: null },
+      ],
+      denied: [{ permission: "checkout.perform" as const, studioId: null }],
+    }
+    expect(can(sam, "checkout.perform", { studioId: "A" })).toBe(false)
+    expect(can(sam, "checkout.perform")).toBe(false)
+    expect(studiosFor(sam, "checkout.perform")).toEqual([])
+    expect(hasUnscoped(sam, "checkout.perform")).toBe(false)
+    // Other permissions from the same roles are untouched.
+    expect(can(sam, "event.staff_decide", { studioId: "A" })).toBe(true)
+    expect(effectivePermissions(sam).find((g) => g.permission === "checkout.perform")).toMatchObject({
+      denied: true,
+      sources: [
+        { role: "STUDIO_STAFF", scope: "studio" },
+        { role: "EQUIPMENT_MANAGER", scope: "all" },
+      ],
+    })
+  })
+
+  it("removes a permission for one studio only, including access an 'all' scope would give (BR-001-15)", () => {
+    const staffAC = {
+      roles: [
+        { role: "STUDIO_STAFF" as const, studioId: "A" },
+        { role: "STUDIO_STAFF" as const, studioId: "C" },
+      ],
+      denied: [{ permission: "checkout.perform" as const, studioId: "A" }],
+    }
+    expect(can(staffAC, "checkout.perform", { studioId: "A" })).toBe(false)
+    expect(can(staffAC, "checkout.perform", { studioId: "C" })).toBe(true)
+    expect(can(staffAC, "checkout.perform")).toBe(true)
+    expect(studiosFor(staffAC, "checkout.perform")).toEqual(["C"])
+
+    const manager = {
+      roles: [{ role: "EQUIPMENT_MANAGER" as const, studioId: null }],
+      denied: [{ permission: "checkout.perform" as const, studioId: "A" }],
+    }
+    expect(can(manager, "checkout.perform", { studioId: "A" })).toBe(false)
+    expect(can(manager, "checkout.perform", { studioId: "B" })).toBe(true)
+    expect(hasUnscoped(manager, "checkout.perform")).toBe(true)
+    expect(deniedStudios(manager, "checkout.perform")).toEqual(["A"])
+
+    // Removing the only studio a staff member works in leaves no access at all.
+    const staffA = { roles: [staffAC.roles[0]!], denied: staffAC.denied }
+    expect(can(staffA, "checkout.perform")).toBe(false)
   })
 })

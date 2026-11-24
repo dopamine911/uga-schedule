@@ -1,10 +1,17 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { PlusIcon, Trash2Icon } from "lucide-react"
+import { useState } from "react"
 import { toast } from "sonner"
+import { toastSaved } from "@/components/admin/formHelpers"
+import { FormDialog } from "@/components/admin/shared"
 import {
-  FormDialog,
-  intOrUndefined,
-  toastSaved,
-} from "@/components/admin/shared"
+  studioDeactivating,
+  studioFormValues,
+  studioGranularityOk,
+  studioPayload,
+  studioSubmitDisabled,
+  studioTurnaroundOk,
+} from "@/components/admin/studioForm"
 import {
   LabeledField,
   LevelSelect,
@@ -19,11 +26,53 @@ import {
 } from "@/components/admin/pickers"
 import { DatePicker } from "@/components/DatePicker"
 import { TimeSelect } from "@/components/TimeSelect"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { api, unwrap } from "@/lib/api"
-import { useState } from "react"
 
 // Dialogs for the studios page: studio details, weekly opening hours, and blackout periods (F-004).
+
+function DeactivateStudioDialog({
+  open,
+  onOpenChange,
+  name,
+  onConfirm,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  name?: string
+  onConfirm: () => void
+}) {
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Deactivate {name}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            New requests for this studio are blocked. Open requests and
+            events in it are flagged for review.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep active</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={onConfirm}>
+            Deactivate studio
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
 
 export function StudioDialog({
   initial,
@@ -33,25 +82,14 @@ export function StudioDialog({
   onClose: () => void
 }) {
   const qc = useQueryClient()
-  const [v, set] = useForm({
-    name: initial?.name ?? "",
-    location: initial?.location ?? "",
-    capacityPeople: String(initial?.capacityPeople ?? 1),
-    minLevelId: initial?.minLevel.id ?? "",
-    turnaroundMinutes: String(initial?.turnaroundMinutes ?? 30),
-    slotGranularityMinutes: String(initial?.slotGranularityMinutes ?? 30),
-    active: (initial?.status ?? "active") === "active",
-  })
+  const [confirmOff, setConfirmOff] = useState(false)
+  const [v, set] = useForm(studioFormValues(initial))
+  const turnaroundOk = studioTurnaroundOk(v)
+  const granularityOk = studioGranularityOk(v)
+  const deactivating = studioDeactivating(v, initial)
   const save = useMutation({
     mutationFn: async (): Promise<string[]> => {
-      const json = {
-        name: v.name.trim(),
-        location: v.location.trim(),
-        capacityPeople: intOrUndefined(v.capacityPeople) ?? 1,
-        minLevelId: v.minLevelId,
-        turnaroundMinutes: intOrUndefined(v.turnaroundMinutes) ?? 0,
-        slotGranularityMinutes: intOrUndefined(v.slotGranularityMinutes) ?? 30,
-      }
+      const json = studioPayload(v)
       if (!initial) {
         await unwrap(api.studios.$post({ json }))
         return []
@@ -72,75 +110,85 @@ export function StudioDialog({
     },
   })
   return (
-    <FormDialog
-      title={initial ? `Edit ${initial.name}` : "New studio"}
-      description="A higher minimum level or a deactivated studio re-checks its open events."
-      onClose={onClose}
-      onSubmit={() => save.mutate()}
-      pending={save.isPending}
-      error={save.error}
-      submitDisabled={!v.name.trim() || !v.minLevelId}
-      wide
-    >
-      <div className="grid gap-4 sm:grid-cols-2">
-        <TextField
-          id="studio-name"
-          label="Name"
-          value={v.name}
-          onChange={(x) => set("name", x)}
-          required
-        />
-        <TextField
-          id="studio-location"
-          label="Location"
-          value={v.location}
-          onChange={(x) => set("location", x)}
-        />
-        <TextField
-          id="studio-capacity"
-          label="Capacity (people)"
-          type="number"
-          value={v.capacityPeople}
-          onChange={(x) => set("capacityPeople", x)}
-        />
-        <LabeledField label="Minimum level" htmlFor="studio-level">
-          <LevelSelect
-            id="studio-level"
-            value={v.minLevelId}
-            onValueChange={(x) => set("minLevelId", x)}
+    <>
+      <FormDialog
+        title={initial ? `Edit ${initial.name}` : "New studio"}
+        description="A higher minimum level or a deactivated studio re-checks its open events."
+        onClose={onClose}
+        onSubmit={() => (deactivating ? setConfirmOff(true) : save.mutate())}
+        pending={save.isPending}
+        error={save.error}
+        submitDisabled={studioSubmitDisabled(v)}
+        wide
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextField
+            id="studio-name"
+            label="Name"
+            value={v.name}
+            onChange={(x) => set("name", x)}
+            required
           />
-        </LabeledField>
-        <TextField
-          id="studio-turnaround"
-          label="Turnaround (minutes)"
-          type="number"
-          value={v.turnaroundMinutes}
-          onChange={(x) => set("turnaroundMinutes", x)}
-          description="Time held after each day for cleaning and reset."
-        />
-        <TextField
-          id="studio-granularity"
-          label="Slot granularity (minutes)"
-          type="number"
-          value={v.slotGranularityMinutes}
-          onChange={(x) => set("slotGranularityMinutes", x)}
-          description="Bookings start and end on multiples of this."
-        />
-      </div>
-      {initial && (
-        <SwitchField
-          id="studio-active"
-          label="Active"
-          description="Inactive studios are hidden from students and can't take new bookings."
-          checked={v.active}
-          onCheckedChange={(x) => set("active", x)}
-        />
-      )}
-    </FormDialog>
+          <TextField
+            id="studio-location"
+            label="Location"
+            value={v.location}
+            onChange={(x) => set("location", x)}
+          />
+          <TextField
+            id="studio-capacity"
+            label="Capacity (people)"
+            type="number"
+            value={v.capacityPeople}
+            onChange={(x) => set("capacityPeople", x)}
+          />
+          <LabeledField label="Minimum level" htmlFor="studio-level">
+            <LevelSelect
+              id="studio-level"
+              value={v.minLevelId}
+              onValueChange={(x) => set("minLevelId", x)}
+            />
+          </LabeledField>
+          <TextField
+            id="studio-turnaround"
+            label="Turnaround (minutes)"
+            type="number"
+            value={v.turnaroundMinutes}
+            onChange={(x) => set("turnaroundMinutes", x)}
+            description="Time held after each day for cleaning and reset."
+            error={turnaroundOk ? undefined : "Enter 0 or more."}
+          />
+          <TextField
+            id="studio-granularity"
+            label="Slot granularity (minutes)"
+            type="number"
+            value={v.slotGranularityMinutes}
+            onChange={(x) => set("slotGranularityMinutes", x)}
+            description="Bookings start and end on multiples of this."
+            error={granularityOk ? undefined : "Enter 1 or more."}
+          />
+        </div>
+        {initial && (
+          <SwitchField
+            id="studio-active"
+            label="Active"
+            description="Inactive studios are hidden from students and can't take new bookings."
+            checked={v.active}
+            onCheckedChange={(x) => set("active", x)}
+          />
+        )}
+      </FormDialog>
+      <DeactivateStudioDialog
+        open={confirmOff}
+        onOpenChange={setConfirmOff}
+        name={initial?.name}
+        onConfirm={() => save.mutate()}
+      />
+    </>
   )
 }
 
-export const WEEKDAYS = [
+const WEEKDAYS = [
   "Monday",
   "Tuesday",
   "Wednesday",
@@ -150,13 +198,32 @@ export const WEEKDAYS = [
   "Sunday",
 ] as const
 
-interface DayHours {
-  open: boolean
+interface HoursWindow {
   opens: string
   closes: string
 }
 
-/** Weekly hours editor. One window per weekday; PUT replaces every window of the studio. */
+interface DayHours {
+  open: boolean
+  windows: HoursWindow[]
+}
+
+const DEFAULT_WINDOW: HoursWindow = { opens: "09:00", closes: "17:00" }
+
+/** Why a day's windows can't be saved, or null. Each window ends after it starts; windows must not overlap. */
+function windowProblem(windows: readonly HoursWindow[]): string | null {
+  const sorted = [...windows].sort((a, b) => a.opens.localeCompare(b.opens))
+  for (const w of sorted) {
+    if (w.closes <= w.opens) return "Closing time must be after opening."
+  }
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i]!.opens < sorted[i - 1]!.closes)
+      return "Windows on the same day can't overlap."
+  }
+  return null
+}
+
+/** Weekly hours editor. Several windows per weekday are allowed (split days); PUT replaces every window of the studio. */
 export function HoursDialog({
   studio,
   hours,
@@ -169,20 +236,19 @@ export function HoursDialog({
   const qc = useQueryClient()
   const [days, setDays] = useState<DayHours[]>(() =>
     WEEKDAYS.map((_, i) => {
-      const h = hours.find((x) => x.weekday === i)
+      const windows = hours
+        .filter((h) => h.weekday === i)
+        .map((h) => ({ opens: h.opens, closes: h.closes }))
       return {
-        open: !!h,
-        opens: h?.opens ?? "09:00",
-        closes: h?.closes ?? "17:00",
+        open: windows.length > 0,
+        windows: windows.length > 0 ? windows : [DEFAULT_WINDOW],
       }
     })
   )
-  const [multi] = useState(() =>
-    WEEKDAYS.some((_, i) => hours.filter((x) => x.weekday === i).length > 1)
-  )
-  const update = (i: number, patch: Partial<DayHours>) =>
-    setDays((prev) => prev.map((d, n) => (n === i ? { ...d, ...patch } : d)))
-  const invalid = days.some((d) => d.open && d.closes <= d.opens)
+  const problems = days.map((d) => (d.open ? windowProblem(d.windows) : null))
+  const invalid = problems.some((p) => p !== null)
+  const editDay = (i: number, edit: (d: DayHours) => DayHours) =>
+    setDays((prev) => prev.map((d, n) => (n === i ? edit(d) : d)))
 
   const save = useMutation({
     mutationFn: () =>
@@ -190,7 +256,13 @@ export function HoursDialog({
         api.studios[":id"].hours.$put({
           param: { id: studio.id },
           json: days.flatMap((d, weekday) =>
-            d.open ? [{ weekday, opens: d.opens, closes: d.closes }] : []
+            d.open
+              ? d.windows.map((w) => ({
+                  weekday,
+                  opens: w.opens,
+                  closes: w.closes,
+                }))
+              : []
           ),
         })
       ),
@@ -204,7 +276,7 @@ export function HoursDialog({
   return (
     <FormDialog
       title={`Opening hours: ${studio.name}`}
-      description="Set the window for each weekday, or mark it closed. Times are campus local time."
+      description="Set one or more windows for each weekday, or mark it closed. Times are campus local time."
       onClose={onClose}
       onSubmit={() => save.mutate()}
       pending={save.isPending}
@@ -213,55 +285,108 @@ export function HoursDialog({
       submitDisabled={invalid}
       wide
     >
-      {multi && (
-        <p className="text-sm text-muted-foreground">
-          This studio has more than one window on some days. Saving keeps one
-          window per day.
-        </p>
-      )}
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-4">
         {WEEKDAYS.map((label, i) => {
           const d = days[i]!
-          const id = `hours-${i}`
+          const problem = problems[i]
           return (
-            <div key={label} className="flex flex-wrap items-center gap-3">
-              <div className="flex w-32 items-center gap-2">
+            <div key={label} className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
                 <Switch
-                  id={`${id}-open`}
+                  id={`hours-${i}-open`}
                   checked={d.open}
-                  onCheckedChange={(x) => update(i, { open: x })}
+                  onCheckedChange={(x) =>
+                    editDay(i, (day) => ({
+                      open: x,
+                      windows: day.windows.length > 0 ? day.windows : [DEFAULT_WINDOW],
+                    }))
+                  }
                   aria-label={`${label} open`}
                 />
-                <label htmlFor={`${id}-open`} className="text-sm font-medium">
+                <label
+                  htmlFor={`hours-${i}-open`}
+                  className="w-28 text-sm font-medium"
+                >
                   {label}
                 </label>
+                {!d.open && (
+                  <span className="text-sm text-muted-foreground">Closed</span>
+                )}
               </div>
-              {d.open ? (
-                <>
-                  <TimeSelect
-                    id={`${id}-opens`}
-                    aria-label={`${label} opens`}
-                    value={d.opens}
-                    step={30}
-                    onChange={(x) => update(i, { opens: x })}
-                  />
-                  <span className="text-sm text-muted-foreground">to</span>
-                  <TimeSelect
-                    id={`${id}-closes`}
-                    aria-label={`${label} closes`}
-                    value={d.closes}
-                    step={30}
-                    invalid={d.closes <= d.opens}
-                    onChange={(x) => update(i, { closes: x })}
-                  />
-                  {d.closes <= d.opens && (
-                    <span className="text-sm text-destructive">
-                      Closing time must be after opening.
-                    </span>
+              {d.open &&
+                d.windows.map((w, n) => (
+                  <div
+                    key={n}
+                    className="flex flex-wrap items-center gap-3 pl-10"
+                  >
+                    <TimeSelect
+                      id={`hours-${i}-${n}-opens`}
+                      aria-label={`${label} window ${n + 1} opens`}
+                      value={w.opens}
+                      step={30}
+                      invalid={problem != null}
+                      onChange={(x) =>
+                        editDay(i, (day) => ({
+                          ...day,
+                          windows: day.windows.map((win, wi) =>
+                            wi === n ? { ...win, opens: x } : win
+                          ),
+                        }))
+                      }
+                    />
+                    <span className="text-sm text-muted-foreground">to</span>
+                    <TimeSelect
+                      id={`hours-${i}-${n}-closes`}
+                      aria-label={`${label} window ${n + 1} closes`}
+                      value={w.closes}
+                      step={30}
+                      invalid={problem != null}
+                      onChange={(x) =>
+                        editDay(i, (day) => ({
+                          ...day,
+                          windows: day.windows.map((win, wi) =>
+                            wi === n ? { ...win, closes: x } : win
+                          ),
+                        }))
+                      }
+                    />
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={`Remove ${label} window ${n + 1}`}
+                      onClick={() =>
+                        editDay(i, (day) => {
+                          const windows = day.windows.filter(
+                            (_, wi) => wi !== n
+                          )
+                          return { open: windows.length > 0, windows }
+                        })
+                      }
+                    >
+                      <Trash2Icon />
+                    </Button>
+                  </div>
+                ))}
+              {d.open && (
+                <div className="flex flex-wrap items-center gap-3 pl-10">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-label={`Add ${label} window`}
+                    onClick={() =>
+                      editDay(i, (day) => ({
+                        ...day,
+                        windows: [...day.windows, DEFAULT_WINDOW],
+                      }))
+                    }
+                  >
+                    <PlusIcon data-icon="inline-start" />
+                    Add window
+                  </Button>
+                  {problem && (
+                    <span className="text-sm text-destructive">{problem}</span>
                   )}
-                </>
-              ) : (
-                <span className="text-sm text-muted-foreground">Closed</span>
+                </div>
               )}
             </div>
           )

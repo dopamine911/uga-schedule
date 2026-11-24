@@ -392,3 +392,81 @@ describe("calendar feed (US-009 ICS)", () => {
     expect(text).toContain("END:VCALENDAR")
   })
 })
+
+describe("result items (BR-008-02, BR-008-10)", () => {
+  it("lets staff open and remove an item, hides it from outsiders, and keeps asset tags from the requester", async () => {
+    const h = createHarness()
+    pinNoon()
+    const day = dayPlus(today(), 5)
+    const id = await confirmed(h, day)
+    setNow(at(day, "13:45"))
+    expect((await checkoutAll(h, id, { xlrQty: 2 })).status).toBe(200)
+
+    const sam = await h.as("sam.staff")
+    const alice = await h.as("alice.student")
+    const tagsFor = async (c: Client) =>
+      (await c.get(`/api/events/${id}`)).body.checkouts.map((r: { assetTag: string | null }) => r.assetTag)
+    expect((await tagsFor(sam)).some((t: string | null) => t !== null)).toBe(true)
+    expect((await tagsFor(alice)).every((t: string | null) => t === null)).toBe(true)
+
+    setNow(at(day, "15:30"))
+    runJobs(h.db)
+    const added = await sam.post(`/api/results/events/${id}/items`, { kind: "link", title: "Rough cut", url: "https://example.edu/cut" })
+    expect(added.status).toBe(201)
+    const itemPath = `/api/results/items/${added.body.id}`
+
+    expect((await (await h.as("dan.student")).get(`${itemPath}/download`)).status).toBe(404)
+    const opened = await sam.get(`${itemPath}/download`)
+    expect(opened.status).toBe(200)
+    expect(opened.body.url).toBe("https://example.edu/cut")
+    expect((await sam.del(itemPath)).status).toBe(200)
+    expect((await sam.get(`/api/results/events/${id}`)).body.items).toEqual([])
+  })
+})
+
+describe("changing a confirmed event (US-006-06, BR-009-01)", () => {
+  it("restarts the staff decision clock and keeps the calendar entry's UID", async () => {
+    const h = createHarness()
+    const i = ids(h)
+    pinNoon()
+    const day = dayPlus(today(), 10)
+    const id = await confirmed(h, day)
+    const dayRow = () => h.db.select().from(s.eventDays).where(eq(s.eventDays.eventId, id)).get()!
+    const uidBefore = dayRow().id
+
+    // Long after the sponsor approved, the requester moves the session to the next day.
+    advanceClock(72 * HOUR)
+    const alice = await h.as("alice.student")
+    const moved = await alice.put(`/api/events/${id}`, podcastDraft(i, dayPlus(day, 1)))
+    expect(moved.status).toBe(200)
+    expect(moved.body.state).toBe("SponsorApproved")
+
+    runJobs(h.db)
+    expect((await alice.get(`/api/events/${id}`)).body.state).toBe("SponsorApproved")
+    expect(dayRow().id).toBe(uidBefore)
+    expect(dayRow().day).toBe(dayPlus(day, 1))
+  })
+})
+
+describe("calendar feed access (BR-009-06, BR-001-09)", () => {
+  it("answers 304 for an unchanged feed and stops serving a tampered link or a disabled account", async () => {
+    const h = createHarness()
+    pinNoon()
+    await confirmed(h, dayPlus(today(), 6))
+    const alice = await h.as("alice.student")
+    const path = new URL((await alice.get("/api/calendar/feed")).body.url).pathname
+
+    const first = await h.app.request(path)
+    expect(first.status).toBe(200)
+    advanceClock(HOUR)
+    const again = await h.app.request(path, { headers: { "if-none-match": first.headers.get("etag")! } })
+    expect(again.status).toBe(304)
+
+    const forged = path.replace(/\.[^.]+\.ics$/, ".AAAA.ics")
+    expect((await h.app.request(forged)).status).toBe(404)
+
+    const ada = await h.as("ada.admin")
+    expect((await ada.patch(`/api/users/${alice.user.id}`, { status: "disabled" })).status).toBe(200)
+    expect((await h.app.request(path)).status).toBe(404)
+  })
+})

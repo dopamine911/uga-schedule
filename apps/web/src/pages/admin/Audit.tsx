@@ -5,11 +5,13 @@ import { EmptyState, PageHeader, QueryView } from "@/components/common"
 import {
   type AuditRow,
   LabeledField,
+  NONE,
   SimpleSelect,
   TextField,
   useForm,
 } from "@/components/admin/pickers"
 import { RequirePerm } from "@/components/admin/shared"
+import { DatePicker } from "@/components/DatePicker"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -42,19 +44,33 @@ export function AuditPage() {
 
 function AuditContent() {
   const tz = useTz()
-  const [v, set] = useForm({ entityType: "", limit: "200" })
+  const [v, set] = useForm({
+    entityType: "",
+    action: "",
+    from: "",
+    to: "",
+    limit: "200",
+  })
   const [open, setOpen] = useState<AuditRow | null>(null)
-  const query = {
-    ...(v.entityType.trim() ? { entityType: v.entityType.trim() } : {}),
-    limit: v.limit,
+  const types = useQuery({
+    queryKey: ["audit", "entity-types"],
+    queryFn: () => unwrap(api.audit["entity-types"].$get()),
+  })
+  // One set of filters drives both the table and the CSV export, so they always match.
+  const filters: Record<string, string> = {
+    ...(v.entityType ? { entityType: v.entityType } : {}),
+    ...(v.action.trim() ? { action: v.action.trim() } : {}),
+    ...(v.from ? { from: v.from } : {}),
+    ...(v.to ? { to: v.to } : {}),
   }
   const rows = useQuery({
-    queryKey: ["audit", query],
-    queryFn: () => unwrap(api.audit.$get({ query })),
+    queryKey: ["audit", { ...filters, limit: v.limit }],
+    queryFn: () =>
+      unwrap(api.audit.$get({ query: { ...filters, limit: v.limit } })),
   })
   const csvHref = `/api/audit/export.csv?${new URLSearchParams({
+    ...filters,
     limit: v.limit,
-    ...(v.entityType.trim() ? { entityType: v.entityType.trim() } : {}),
   }).toString()}`
 
   return (
@@ -73,14 +89,48 @@ function AuditContent() {
       />
 
       <div className="flex flex-wrap items-end gap-4">
-        <div className="w-64">
+        <div className="w-56">
+          <LabeledField label="Entity type" htmlFor="audit-entity">
+            <SimpleSelect
+              id="audit-entity"
+              value={v.entityType || NONE}
+              onValueChange={(x) => set("entityType", x === NONE ? "" : x)}
+              options={(types.data ?? []).map((t) => ({
+                value: t,
+                label: humanize(t),
+              }))}
+              allLabel="All types"
+            />
+          </LabeledField>
+        </div>
+        <div className="w-56">
           <TextField
-            id="audit-entity"
-            label="Entity type"
-            placeholder="e.g. equipment_type"
-            value={v.entityType}
-            onChange={(x) => set("entityType", x)}
+            id="audit-action"
+            label="Action contains"
+            placeholder="e.g. checkout"
+            value={v.action}
+            onChange={(x) => set("action", x)}
           />
+        </div>
+        <div className="w-44">
+          <LabeledField label="From" htmlFor="audit-from">
+            <DatePicker
+              id="audit-from"
+              value={v.from}
+              max={v.to || undefined}
+              onChange={(x) => set("from", x)}
+            />
+          </LabeledField>
+        </div>
+        <div className="w-44">
+          <LabeledField label="To" htmlFor="audit-to">
+            <DatePicker
+              id="audit-to"
+              value={v.to}
+              min={v.from || undefined}
+              onChange={(x) => set("to", x)}
+            />
+          </LabeledField>
         </div>
         <div className="w-40">
           <LabeledField label="Show" htmlFor="audit-limit">
@@ -116,37 +166,44 @@ function AuditContent() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {list.map((r) => (
-                    <TableRow key={r.id}>
-                      <TableCell className="whitespace-nowrap">
-                        {fmtInstant(r.at, tz)}
-                      </TableCell>
-                      <TableCell>{r.actorName ?? "System"}</TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {r.action}
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-xs text-muted-foreground">
-                          {humanize(r.entityType)}
-                        </span>
-                        <div className="font-mono text-xs break-all">
-                          {r.entityId}
-                        </div>
-                      </TableCell>
-                      <TableCell className="max-w-64 truncate text-muted-foreground">
-                        {r.reason || "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setOpen(r)}
-                        >
-                          Details
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {list.map((r) => {
+                    const entity = r.entityLabel ?? humanize(r.entityType)
+                    return (
+                      <TableRow key={r.id}>
+                        <TableCell className="whitespace-nowrap">
+                          {fmtInstant(r.at, tz)}
+                        </TableCell>
+                        <TableCell>{r.actorName ?? "System"}</TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {r.action}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="text-xs text-muted-foreground">
+                              {humanize(r.entityType)}
+                            </span>
+                            <span>{r.entityLabel ?? "—"}</span>
+                            <span className="font-mono text-xs break-all text-muted-foreground">
+                              {r.entityId}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-64 truncate text-muted-foreground">
+                          {r.reason || "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            aria-label={`Details for ${r.action} on ${entity}`}
+                            onClick={() => setOpen(r)}
+                          >
+                            Details
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>

@@ -8,6 +8,20 @@
       "when": 1795484194466,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1795534415724,
+      "tag": "0001_permission_denials",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795534928935,
+      "tag": "0002_permission_denial_studio",
+      "breakpoints": true
     }
   ]
 }

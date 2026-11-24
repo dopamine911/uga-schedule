@@ -9,6 +9,7 @@ import {
   type UnitStatus,
   addMinutesIso,
   can,
+  deniedStudios,
   hasUnscoped,
   nextState,
   planStages,
@@ -74,8 +75,12 @@ export function localLabel(iso: string): string {
 
 /** A draft is visible to its requester and to unscoped viewers only; everything else follows event.view (F-001). */
 export function canViewEvent(db: DB, user: SessionUser, ev: EventRow): boolean {
-  if (ev.state === "Draft") return ev.requesterId === user.id || hasUnscoped(user.roles, "event.view")
-  return can(user.roles, "event.view", eventAccess(user, ev, participantIds(db, ev.id)))
+  if (ev.state === "Draft")
+    return (
+      ev.requesterId === user.id ||
+      (hasUnscoped(user, "event.view") && !deniedStudios(user, "event.view").includes(ev.studioId))
+    )
+  return can(user, "event.view", eventAccess(user, ev, participantIds(db, ev.id)))
 }
 
 /** Loads an event the caller may see; 404 otherwise so existence is not leaked. */
@@ -87,7 +92,7 @@ export function visibleEvent(db: DB, user: SessionUser, id: string): EventRow {
 
 /** Action permission on a visible record (403 when the caller sees it but may not act). */
 export function allowed(user: SessionUser, perm: Permission, studioId: string | null, own = false): boolean {
-  return can(user.roles, perm, { own, studioId })
+  return can(user, perm, { own, studioId })
 }
 
 export function isRequester(user: SessionUser, ev: EventRow): boolean {

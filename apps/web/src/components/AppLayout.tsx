@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { BellIcon, ClapperboardIcon, ClockIcon, LogOutIcon } from "lucide-react"
 import { Navigate, NavLink, Outlet, useLocation } from "react-router"
 import { toast } from "sonner"
+import { useNavAllowed } from "@/components/common"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -32,16 +33,9 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { api, unwrap } from "@/lib/api"
-import {
-  useCan,
-  useHasRole,
-  useMe,
-  useSignOut,
-  useTz,
-  useUser,
-} from "@/lib/auth"
-import { fmtInstant, humanize, initials } from "@/lib/format"
-import { NAV, type NavItem, routeFor } from "@/lib/nav"
+import { useMe, useSignOut, useTz, useUser } from "@/lib/auth"
+import { fmtClock, fmtInstant, humanize, initials } from "@/lib/format"
+import { NAV, routeFor } from "@/lib/nav"
 
 function useUnreadCount() {
   return useQuery({
@@ -57,14 +51,11 @@ const ACTIVE_NAV =
 
 export function AppLayout() {
   const user = useUser()
-  const can = useCan()
-  const hasRole = useHasRole()
+  const allowed = useNavAllowed()
   const { pathname } = useLocation()
   const signOut = useSignOut()
   const unread = useUnreadCount()
 
-  const visible = (i: NavItem) =>
-    (!i.perm || can(i.perm)) && (!i.roles || hasRole(...i.roles))
   const activeTo = routeFor(pathname)?.to
   const isActive = (to: string) => to === activeTo
 
@@ -92,7 +83,7 @@ export function AppLayout() {
         </SidebarHeader>
         <SidebarContent>
           {NAV.map((group) => {
-            const items = group.items.filter((i) => !i.hidden && visible(i))
+            const items = group.items.filter((i) => !i.hidden && allowed(i.to))
             if (items.length === 0) return null
             return (
               <SidebarGroup key={group.label}>
@@ -145,7 +136,7 @@ export function AppLayout() {
         </SidebarFooter>
       </Sidebar>
       <SidebarInset className="min-w-0">
-        <header className="flex h-14 items-center gap-2 border-t-4 border-b border-t-primary bg-card px-4">
+        <header className="flex h-14 min-w-0 items-center gap-2 border-t-4 border-b border-t-primary bg-card px-2 sm:px-4">
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-6" />
           <div className="flex-1" />
@@ -158,7 +149,7 @@ export function AppLayout() {
                     {initials(user.displayName)}
                   </AvatarFallback>
                 </Avatar>
-                <span className="flex flex-col items-start leading-tight">
+                <span className="hidden flex-col items-start leading-tight sm:flex">
                   <span>{user.displayName}</span>
                   <span className="hidden text-xs text-muted-foreground sm:inline">
                     {[...new Set(user.roles.map((r) => humanize(r.role)))].join(
@@ -169,6 +160,9 @@ export function AppLayout() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuLabel className="sm:hidden">
+                {user.displayName}
+              </DropdownMenuLabel>
               <DropdownMenuLabel>{user.email}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
@@ -213,8 +207,15 @@ function DevClock() {
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm">
           <ClockIcon data-icon="inline-start" />
-          {fmtInstant(clock.data.now, tz)}
-          {offset && <Badge variant="secondary">dev time</Badge>}
+          <span className="sm:hidden">{fmtClock(clock.data.now, tz)}</span>
+          <span className="hidden sm:inline">
+            {fmtInstant(clock.data.now, tz)}
+          </span>
+          {offset && (
+            <Badge variant="secondary" className="hidden sm:inline-flex">
+              dev time
+            </Badge>
+          )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

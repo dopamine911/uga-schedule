@@ -22,8 +22,18 @@ import {
   StatusBadge,
   type PickedUser,
   UserSearch,
-  toastSaved,
 } from "@/components/admin/shared"
+import { toastSaved } from "@/components/admin/formHelpers"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
@@ -88,6 +98,10 @@ function CourseContent({ course }: { course: CourseDetail }) {
       qc.invalidateQueries({ queryKey: ["courses"] })
       toastSaved("Student dropped from the course.", res.flaggedEvents)
     },
+    onError: (err) =>
+      toast.error(
+        err instanceof Error ? err.message : "Could not drop the student."
+      ),
   })
 
   return (
@@ -210,6 +224,7 @@ function CourseContent({ course }: { course: CourseDetail }) {
       {importing && (
         <RosterDialog
           courseId={course.id}
+          enrolled={enrolled}
           onClose={() => setImporting(false)}
         />
       )}
@@ -301,13 +316,16 @@ function AddStudent({
 
 function RosterDialog({
   courseId,
+  enrolled,
   onClose,
 }: {
   courseId: string
+  enrolled: readonly Enrollment[]
   onClose: () => void
 }) {
   const qc = useQueryClient()
   const [v, set] = useForm({ emails: "" })
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const [result, setResult] = useState<{
     added: number
     dropped: number
@@ -316,19 +334,22 @@ function RosterDialog({
     flaggedEvents: number
   } | null>(null)
 
+  const emails = v.emails
+    .split(/[\n,]/)
+    .map((e) => e.trim())
+    .filter(Boolean)
+  // Mirrors the server: emails match case-insensitively, and enrolled students not on the list are dropped.
+  const listed = new Set(emails.map((e) => e.toLowerCase()))
+  const dropping = emails.length === 0 ? [] : enrolled.filter((e) => !listed.has(e.user.email.toLowerCase()))
+
   const save = useMutation({
-    mutationFn: () => {
-      const emails = v.emails
-        .split(/[\n,]/)
-        .map((e) => e.trim())
-        .filter(Boolean)
-      return unwrap(
+    mutationFn: () =>
+      unwrap(
         api.levels.courses[":id"].roster.$post({
           param: { id: courseId },
           json: { emails },
         })
-      )
-    },
+      ),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["courses"] })
       setResult(res)
@@ -374,28 +395,76 @@ function RosterDialog({
     )
 
   return (
-    <FormDialog
-      title="Import roster"
-      description="The roster replaces current enrollments: listed students are enrolled, enrolled students not listed are dropped."
-      onClose={onClose}
-      onSubmit={() => save.mutate()}
-      pending={save.isPending}
-      error={save.error}
-      submitLabel="Import roster"
-      submitDisabled={!v.emails.trim()}
-    >
-      <TextAreaField
-        id="roster-emails"
-        label="Emails"
-        value={v.emails}
-        onChange={(x) => set("emails", x)}
-        rows={8}
-        placeholder={
-          "one@university.edu\ntwo@university.edu, three@university.edu"
-        }
-        description="One per line or comma separated. Emails that don't match an active account are reported back."
-      />
-    </FormDialog>
+    <>
+      <FormDialog
+        title="Import roster"
+        description="The roster replaces current enrollments: listed students are enrolled, enrolled students not listed are dropped."
+        onClose={onClose}
+        onSubmit={() => (dropping.length > 0 ? setConfirmOpen(true) : save.mutate())}
+        pending={save.isPending}
+        error={save.error}
+        submitLabel="Import roster"
+        submitDisabled={emails.length === 0}
+      >
+        <TextAreaField
+          id="roster-emails"
+          label="Emails"
+          value={v.emails}
+          onChange={(x) => set("emails", x)}
+          rows={8}
+          placeholder={
+            "one@university.edu\ntwo@university.edu, three@university.edu"
+          }
+          description="One per line or comma separated. Emails that don't match an active account are reported back."
+        />
+        {emails.length > 0 && (
+          <Alert variant={dropping.length > 0 ? "destructive" : "default"}>
+            <AlertTitle>{listed.size} to add or keep</AlertTitle>
+            <AlertDescription>
+              {dropping.length === 0 ? (
+                <p>No enrolled student will be dropped.</p>
+              ) : (
+                <>
+                  <p>
+                    {dropping.length} enrolled student
+                    {dropping.length === 1 ? " is" : "s are"} not on this list
+                    and will be dropped. Their course grant is revoked from today:
+                  </p>
+                  <ul className="flex list-disc flex-col gap-1 pl-4">
+                    {dropping.map((e) => (
+                      <li key={e.id}>
+                        {e.user.displayName} ({e.user.email})
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
+      </FormDialog>
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Drop {dropping.length} student{dropping.length === 1 ? "" : "s"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Importing this roster drops {dropping.map((e) => e.user.displayName).join(", ")}. Open events that rely on their grants are flagged for review.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Back</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => save.mutate()}
+            >
+              Import and drop
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }
 

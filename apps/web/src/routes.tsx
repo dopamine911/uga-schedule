@@ -1,5 +1,6 @@
 import { createBrowserRouter } from "react-router"
 import { RequireAuth } from "@/components/AppLayout"
+import { RouteError } from "@/components/RouteError"
 import { AuditPage } from "@/pages/admin/Audit"
 import { CoursePage } from "@/pages/admin/Course"
 import { EventTypeEditPage } from "@/pages/admin/EventTypeEdit"
@@ -29,39 +30,51 @@ import { DeskPage } from "@/pages/staff/Desk"
 import { HoldsPage } from "@/pages/staff/Holds"
 import { SchedulePage } from "@/pages/staff/Schedule"
 
+// Two fallbacks: the root one catches anything, the inner one keeps the sidebar and header on screen
+// when a single page fails.
 export const router = createBrowserRouter([
-  { path: "/login", element: <LoginPage /> },
   {
-    element: <RequireAuth />,
+    ErrorBoundary: RouteError,
     children: [
-      { index: true, element: <DashboardPage /> },
-      { path: "events", element: <EventListPage /> },
-      { path: "events/new", element: <EventFormPage /> },
-      { path: "events/:id", element: <EventDetailPage /> },
-      { path: "events/:id/edit", element: <EventFormPage /> },
-      { path: "events/:id/checkout", element: <CheckoutPage /> },
-      { path: "events/:id/checkin", element: <CheckinPage /> },
-      { path: "results", element: <ResultsListPage /> },
-      { path: "results/:eventId", element: <ResultPackagePage /> },
-      { path: "inbox", element: <InboxPage /> },
-      { path: "me/access", element: <MyAccessPage /> },
-      { path: "equipment", element: <CatalogPage /> },
-      { path: "settings/calendar", element: <CalendarSettingsPage /> },
-      { path: "approvals", element: <ApprovalsPage /> },
-      { path: "desk", element: <DeskPage /> },
-      { path: "schedule", element: <SchedulePage /> },
-      { path: "holds", element: <HoldsPage /> },
-      { path: "admin/inventory", element: <InventoryPage /> },
-      { path: "admin/inventory/:id", element: <InventoryTypePage /> },
-      { path: "admin/levels", element: <LevelsPage /> },
-      { path: "admin/courses/:id", element: <CoursePage /> },
-      { path: "admin/users", element: <UsersPage /> },
-      { path: "admin/users/:id", element: <UserDetailPage /> },
-      { path: "admin/studios", element: <StudiosPage /> },
-      { path: "admin/event-types", element: <EventTypesPage /> },
-      { path: "admin/event-types/:id", element: <EventTypeEditPage /> },
-      { path: "admin/policies", element: <PoliciesPage /> },
-      { path: "admin/audit", element: <AuditPage /> },
+      { path: "/login", element: <LoginPage /> },
+      {
+        element: <RequireAuth />,
+        children: [
+          {
+            ErrorBoundary: RouteError,
+            children: [
+              { index: true, element: <DashboardPage /> },
+              { path: "events", element: <EventListPage /> },
+              { path: "events/new", element: <EventFormPage /> },
+              { path: "events/:id", element: <EventDetailPage /> },
+              { path: "events/:id/edit", element: <EventFormPage /> },
+              { path: "events/:id/checkout", element: <CheckoutPage /> },
+              { path: "events/:id/checkin", element: <CheckinPage /> },
+              { path: "results", element: <ResultsListPage /> },
+              { path: "results/:eventId", element: <ResultPackagePage /> },
+              { path: "inbox", element: <InboxPage /> },
+              { path: "me/access", element: <MyAccessPage /> },
+              { path: "equipment", element: <CatalogPage /> },
+              { path: "settings/calendar", element: <CalendarSettingsPage /> },
+              { path: "approvals", element: <ApprovalsPage /> },
+              { path: "desk", element: <DeskPage /> },
+              { path: "schedule", element: <SchedulePage /> },
+              { path: "holds", element: <HoldsPage /> },
+              { path: "admin/inventory", element: <InventoryPage /> },
+              { path: "admin/inventory/:id", element: <InventoryTypePage /> },
+              { path: "admin/levels", element: <LevelsPage /> },
+              { path: "admin/courses/:id", element: <CoursePage /> },
+              { path: "admin/users", element: <UsersPage /> },
+              { path: "admin/users/:id", element: <UserDetailPage /> },
+              { path: "admin/studios", element: <StudiosPage /> },
+              { path: "admin/event-types", element: <EventTypesPage /> },
+              { path: "admin/event-types/:id", element: <EventTypeEditPage /> },
+              { path: "admin/policies", element: <PoliciesPage /> },
+              { path: "admin/audit", element: <AuditPage /> },
+            ],
+          },
+        ],
+      },
     ],
   },
 ])

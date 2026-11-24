@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useState } from "react"
-import { Link, useParams } from "react-router"
+import { useEffect, useState } from "react"
+import { Link, useBlocker, useParams } from "react-router"
 import { toast } from "sonner"
 import { SettingsIcon, ListTodoIcon } from "lucide-react"
 import {
@@ -9,13 +9,12 @@ import {
   PageHeader,
   QueryView,
 } from "@/components/common"
+import { StageEditor, StudioCheckboxes } from "@/components/admin/EventTypeParts"
 import {
   type StageDraft,
-  StageEditor,
-  StudioCheckboxes,
   draftToPayload,
   stageToDraft,
-} from "@/components/admin/EventTypeParts"
+} from "@/components/admin/stageDraft"
 import {
   type EventTypeDetail,
   SwitchField,
@@ -47,6 +46,18 @@ import {
 import { Spinner } from "@/components/ui/spinner"
 import { ApiError, api, unwrap } from "@/lib/api"
 import { useCan } from "@/lib/auth"
+import {
+  type SetSettings,
+  type SettingsForm,
+  settingsFormFromType,
+  settingsPayload,
+  isSettingsInvalid,
+} from "./eventTypeSettings"
+import {
+  DeactivateRunningDialog,
+  SettingsLimitsGrid,
+  SettingsSwitches,
+} from "./EventTypeSettingsParts"
 
 export function EventTypeEditPage() {
   return (
@@ -64,74 +75,125 @@ function EventTypeEditView() {
   })
   return (
     <QueryView query={query}>
-      {(type) => (
-        <div className="flex flex-col gap-6">
-          <PageHeader
-            title={type.name}
-            description={
-              <span className="inline-flex flex-wrap items-center gap-2">
-                <Link
-                  to="/admin/event-types"
-                  className="underline-offset-4 hover:underline"
-                >
-                  Event types
-                </Link>
-                <span aria-hidden>/</span>
-                <StatusBadge status={type.status} />
-              </span>
-            }
-          />
-          <SettingsCard type={type} />
-          <StagesCard type={type} />
-        </div>
-      )}
+      {(type) => <EventTypeEditor type={type} />}
     </QueryView>
+  )
+}
+
+interface SettingsState {
+  v: SettingsForm
+  set: SetSettings
+  dirty: boolean
+}
+
+/** Settings form; the saved type is the baseline for "unsaved changes". */
+function useSettingsForm(type: EventTypeDetail): SettingsState {
+  const saved = settingsFormFromType(type)
+  const [v, set] = useForm(saved)
+  return { v, set, dirty: JSON.stringify(v) !== JSON.stringify(saved) }
+}
+
+interface StagesState {
+  stages: StageDraft[]
+  setStages: (next: StageDraft[]) => void
+  dirty: boolean
+}
+
+function useStageDrafts(type: EventTypeDetail): StagesState {
+  const [stages, setStages] = useState<StageDraft[]>(() =>
+    type.stages.map(stageToDraft)
+  )
+  const dirty =
+    JSON.stringify(stages.map(draftToPayload)) !==
+    JSON.stringify(type.stages.map(stageToDraft).map(draftToPayload))
+  return { stages, setStages, dirty }
+}
+
+/** Owns both forms, so it knows about unsaved edits without the cards reporting back. */
+function EventTypeEditor({ type }: { type: EventTypeDetail }) {
+  const settings = useSettingsForm(type)
+  const stages = useStageDrafts(type)
+  const anyDirty = settings.dirty || stages.dirty
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      anyDirty && currentLocation.pathname !== nextLocation.pathname
+  )
+  useEffect(() => {
+    if (!anyDirty) return
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ""
+    }
+    window.addEventListener("beforeunload", warn)
+    return () => window.removeEventListener("beforeunload", warn)
+  }, [anyDirty])
+
+  return (
+    <>
+      <div className="flex flex-col gap-6">
+        <PageHeader
+          title={type.name}
+          description={
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <Link
+                to="/admin/event-types"
+                className="underline-offset-4 hover:underline"
+              >
+                Event types
+              </Link>
+              <span aria-hidden>/</span>
+              <StatusBadge status={type.status} />
+            </span>
+          }
+        />
+        <SettingsCard type={type} form={settings} />
+        <StagesCard type={type} form={stages} />
+      </div>
+      {blocker.state === "blocked" && (
+        <AlertDialog open onOpenChange={(o) => !o && blocker.reset()}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Leave with unsaved changes?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Changes to settings or the stage schedule that you haven't saved
+                will be lost.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Stay on this page</AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                onClick={() => blocker.proceed()}
+              >
+                Leave without saving
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+    </>
   )
 }
 
 const RUNNING_CONFLICT = "EVENT_TYPE_IN_USE"
 
-function SettingsCard({ type }: { type: EventTypeDetail }) {
+function SettingsCard({
+  type,
+  form: { v, set, dirty },
+}: {
+  type: EventTypeDetail
+  form: SettingsState
+}) {
   const qc = useQueryClient()
   const can = useCan()
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [v, set] = useForm({
-    name: type.name,
-    description: type.description,
-    active: type.status === "active",
-    maxDays: String(type.maxDays),
-    maxHoursPerDay: String(type.maxHoursPerDay),
-    dailyEquipmentReturn: type.dailyEquipmentReturn,
-    pickupWindowMinutes: String(type.pickupWindowMinutes),
-    checkinGraceMinutes: String(type.checkinGraceMinutes),
-    requiresResults: type.requiresResults,
-    resultsDueDays: String(type.resultsDueDays),
-    requesterCanUpload: type.requesterCanUpload,
-    requiresSponsorSignoff: type.requiresSponsorSignoff,
-    allowedStudioIds: type.allowedStudios.map((s) => s.id),
-  })
 
   const save = useMutation({
     mutationFn: (confirmRunningEvents: boolean) =>
       unwrap(
         api["event-types"][":id"].$patch({
           param: { id: type.id },
-          json: {
-            name: v.name.trim(),
-            description: v.description.trim(),
-            status: v.active ? "active" : "inactive",
-            maxDays: Number(v.maxDays),
-            maxHoursPerDay: Number(v.maxHoursPerDay),
-            dailyEquipmentReturn: v.dailyEquipmentReturn,
-            pickupWindowMinutes: Number(v.pickupWindowMinutes),
-            checkinGraceMinutes: Number(v.checkinGraceMinutes),
-            requiresResults: v.requiresResults,
-            resultsDueDays: Number(v.resultsDueDays),
-            requesterCanUpload: v.requesterCanUpload,
-            requiresSponsorSignoff: v.requiresSponsorSignoff,
-            allowedStudioIds: v.allowedStudioIds,
-            confirmRunningEvents,
-          },
+          json: settingsPayload(v, confirmRunningEvents),
         })
       ),
     onSuccess: () => {
@@ -144,19 +206,7 @@ function SettingsCard({ type }: { type: EventTypeDetail }) {
     },
   })
 
-  const numbers = [
-    v.maxDays,
-    v.maxHoursPerDay,
-    v.pickupWindowMinutes,
-    v.checkinGraceMinutes,
-    v.resultsDueDays,
-  ]
-  const invalid =
-    !v.name.trim() ||
-    v.allowedStudioIds.length === 0 ||
-    numbers.some(
-      (n) => !Number.isInteger(Number(n)) || Number(n) < 0 || n === ""
-    )
+  const invalid = isSettingsInvalid(v)
   const editable = can("event_type.manage")
 
   return (
@@ -203,83 +253,8 @@ function SettingsCard({ type }: { type: EventTypeDetail }) {
             onChange={(x) => set("description", x)}
             disabled={!editable}
           />
-          <div className="grid gap-4 sm:grid-cols-3">
-            <TextField
-              id="et-max-days"
-              label="Max days"
-              type="number"
-              value={v.maxDays}
-              onChange={(x) => set("maxDays", x)}
-              disabled={!editable}
-            />
-            <TextField
-              id="et-max-hours"
-              label="Max hours per day"
-              type="number"
-              value={v.maxHoursPerDay}
-              onChange={(x) => set("maxHoursPerDay", x)}
-              disabled={!editable}
-            />
-            <TextField
-              id="et-pickup"
-              label="Pickup window (minutes)"
-              type="number"
-              value={v.pickupWindowMinutes}
-              onChange={(x) => set("pickupWindowMinutes", x)}
-              disabled={!editable}
-              description="How long before the start a pickup may happen."
-            />
-            <TextField
-              id="et-grace"
-              label="Check-in grace (minutes)"
-              type="number"
-              value={v.checkinGraceMinutes}
-              onChange={(x) => set("checkinGraceMinutes", x)}
-              disabled={!editable}
-            />
-            <TextField
-              id="et-results-days"
-              label="Results due (days)"
-              type="number"
-              value={v.resultsDueDays}
-              onChange={(x) => set("resultsDueDays", x)}
-              disabled={!editable || !v.requiresResults}
-              description="After the event ends."
-            />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <SwitchField
-              id="et-daily-return"
-              label="Equipment returned daily"
-              description="Equipment goes back at the end of each day instead of at the end of the event."
-              checked={v.dailyEquipmentReturn}
-              onCheckedChange={(x) => set("dailyEquipmentReturn", x)}
-              disabled={!editable}
-            />
-            <SwitchField
-              id="et-requires-results"
-              label="Requires results"
-              description="The requester must submit results after the event."
-              checked={v.requiresResults}
-              onCheckedChange={(x) => set("requiresResults", x)}
-              disabled={!editable}
-            />
-            <SwitchField
-              id="et-requester-upload"
-              label="Requester can upload results"
-              checked={v.requesterCanUpload}
-              onCheckedChange={(x) => set("requesterCanUpload", x)}
-              disabled={!editable}
-            />
-            <SwitchField
-              id="et-signoff"
-              label="Requires sponsor sign-off"
-              description="A sponsor must sign off before the event is confirmed."
-              checked={v.requiresSponsorSignoff}
-              onCheckedChange={(x) => set("requiresSponsorSignoff", x)}
-              disabled={!editable}
-            />
-          </div>
+          <SettingsLimitsGrid v={v} set={set} editable={editable} />
+          <SettingsSwitches v={v} set={set} editable={editable} />
           <StudioCheckboxes
             value={v.allowedStudioIds}
             onChange={(ids) => set("allowedStudioIds", ids)}
@@ -292,7 +267,12 @@ function SettingsCard({ type }: { type: EventTypeDetail }) {
         </form>
       </CardContent>
       {editable && (
-        <CardFooter className="justify-end">
+        <CardFooter className="justify-end gap-3">
+          {dirty && (
+            <span role="status" className="text-sm text-muted-foreground">
+              Unsaved changes
+            </span>
+          )}
           <Button
             type="submit"
             form="event-type-settings"
@@ -303,41 +283,32 @@ function SettingsCard({ type }: { type: EventTypeDetail }) {
           </Button>
         </CardFooter>
       )}
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Deactivate with open events?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {save.error instanceof ApiError
-                ? save.error.message
-                : "This type still has open events."}{" "}
-              They keep running under the current version; no new bookings will
-              be accepted.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep active</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                setConfirmOpen(false)
-                save.mutate(true)
-              }}
-            >
-              Deactivate anyway
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeactivateRunningDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        message={
+          save.error instanceof ApiError
+            ? save.error.message
+            : "This type still has open events."
+        }
+        onConfirm={() => {
+          setConfirmOpen(false)
+          save.mutate(true)
+        }}
+      />
     </Card>
   )
 }
 
-function StagesCard({ type }: { type: EventTypeDetail }) {
+function StagesCard({
+  type,
+  form: { stages, setStages, dirty },
+}: {
+  type: EventTypeDetail
+  form: StagesState
+}) {
   const qc = useQueryClient()
   const can = useCan()
-  const [stages, setStages] = useState<StageDraft[]>(() =>
-    type.stages.map(stageToDraft)
-  )
   const save = useMutation({
     mutationFn: () =>
       unwrap(
@@ -375,7 +346,12 @@ function StagesCard({ type }: { type: EventTypeDetail }) {
         {save.error && <ErrorAlert error={save.error} />}
       </CardContent>
       {editable && (
-        <CardFooter className="justify-end">
+        <CardFooter className="justify-end gap-3">
+          {dirty && (
+            <span role="status" className="text-sm text-muted-foreground">
+              Unsaved changes
+            </span>
+          )}
           <Button onClick={() => save.mutate()} disabled={save.isPending}>
             {save.isPending && <Spinner data-icon="inline-start" />}
             Save stages

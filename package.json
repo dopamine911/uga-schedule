@@ -8,6 +8,10 @@
     "db:reset": "pnpm --filter @studio/api db:reset",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "build": "pnpm -r build"
+    "build": "pnpm -r build",
+    "doctor": "react-doctor -y --verbose"
+  },
+  "devDependencies": {
+    "react-doctor": "^0.9.23"
   }
 }

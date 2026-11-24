@@ -13,11 +13,30 @@ import {
 } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ApiError } from "@/lib/api"
+import { useCan, useHasRole } from "@/lib/auth"
 import { humanize } from "@/lib/format"
 import { STATE_ICON } from "@/lib/icons"
-import { routeIcon } from "@/lib/nav"
+import { NAV, routeIcon } from "@/lib/nav"
 
 // Shared building blocks used by every page. Keep page-specific UI in the page files.
+
+/**
+ * Whether the signed-in user may open a sidebar route, by the same permission and role rules that show
+ * it in the sidebar (lib/nav.ts). Pages render the access-denied state instead of an empty page.
+ * Unknown routes are denied.
+ */
+export function useNavAllowed() {
+  const can = useCan()
+  const hasRole = useHasRole()
+  return (to: string) => {
+    const item = NAV.flatMap((g) => g.items).find((i) => i.to === to)
+    return (
+      !!item &&
+      (!item.perm || can(item.perm)) &&
+      (!item.roles || hasRole(...item.roles))
+    )
+  }
+}
 
 /**
  * Page title with the UGA "I-bar" accent: a Bulldog Red rule beside an Oswald headline, plus the page's
@@ -78,7 +97,7 @@ type StateTone =
   | "outline"
 
 /** Lifecycle colour: blue while waiting on people, teal once booked, red while live, neutral when done. */
-export const STATE_TONE: Record<EventState, StateTone> = {
+const STATE_TONE: Record<EventState, StateTone> = {
   Draft: "outline",
   Submitted: "info",
   SponsorApproved: "info",
@@ -100,7 +119,7 @@ const STATE_LABEL: Partial<Record<EventState, string>> = {
   NoShow: "No-show",
 }
 
-export function stateLabel(state: EventState): string {
+function stateLabel(state: EventState): string {
   return STATE_LABEL[state] ?? humanize(state)
 }
 

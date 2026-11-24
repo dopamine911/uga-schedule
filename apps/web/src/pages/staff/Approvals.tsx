@@ -2,15 +2,14 @@ import { type UseQueryResult, useQuery } from "@tanstack/react-query"
 import {
   ArrowRightIcon,
   CalendarCheckIcon,
-  CheckIcon,
   ListChecksIcon,
   type LucideIcon,
   SearchCheckIcon,
   UserCheckIcon,
-  XIcon,
 } from "lucide-react"
 import type { ReactNode } from "react"
 import { Link } from "react-router"
+import { NoAccess } from "@/components/admin/shared"
 import {
   EmptyState,
   ErrorAlert,
@@ -18,13 +17,9 @@ import {
   LoadingBlock,
   PageHeader,
   StateBadge,
+  useNavAllowed,
 } from "@/components/common"
-import {
-  type DialogField,
-  type EventSummary,
-  TextActionDialog,
-  useInvalidateEvent,
-} from "@/components/events/shared"
+import type { EventDetail, EventSummary } from "@/components/events/shared"
 import { useNow } from "@/components/staff/shared"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -40,9 +35,26 @@ import {
 import { api, unwrap } from "@/lib/api"
 import { useHasRole, useTz } from "@/lib/auth"
 import { fmtDays, fmtInstant, fmtRelative, humanize } from "@/lib/format"
-import { toast } from "sonner"
+import {
+  ReviewResolveAction,
+  SponsorDecisionActions,
+  StaffDecisionActions,
+} from "./approvals/ApprovalActions"
+
+/** Stands in for the event's action flags while its detail is loading. */
+const NO_ACTIONS = {
+  sponsorDecide: false,
+  staffDecide: false,
+  resolveReview: false,
+}
 
 export function ApprovalsPage() {
+  const navAllowed = useNavAllowed()
+  if (!navAllowed("/approvals")) return <NoAccess title="Approvals" />
+  return <ApprovalsBody />
+}
+
+function ApprovalsBody() {
   const hasRole = useHasRole()
   const isSponsor = hasRole("SPONSOR")
   const isStaff = hasRole("STUDIO_STAFF", "EQUIPMENT_MANAGER", "ADMIN")
@@ -104,7 +116,7 @@ export function ApprovalsPage() {
           <Section
             icon={SearchCheckIcon}
             title="Needs review"
-            empty="No confirmed requests are flagged for review."
+            empty="No requests are flagged for review."
             query={review}
             render={(ev) => (
               <ApprovalRow
@@ -178,244 +190,166 @@ function ApprovalRow({
   now: number
   tz: string
 }) {
-  const invalidate = useInvalidateEvent()
   // The list omits submission time, overrides and equipment, so each row loads its detail.
   const detail = useQuery({
     queryKey: ["event", ev.id],
     queryFn: () => unwrap(api.events[":id"].$get({ param: { id: ev.id } })),
   })
   const d = detail.data
-  const lines = d?.lines ?? []
-  const totalQty = lines.reduce((n, l) => n + l.qty, 0)
   const overrides = d?.overrideRequested ?? []
-
-  const sponsorDecide = async (
-    note: string,
-    decision: "approve" | "reject"
-  ) => {
-    await unwrap(
-      api.events[":id"]["sponsor-decision"].$post({
-        param: { id: ev.id },
-        json: { decision, note },
-      })
-    )
-    toast.success(
-      decision === "approve"
-        ? `Approved “${ev.title}”`
-        : `Rejected “${ev.title}”`
-    )
-    await invalidate(ev.id)
-  }
-
-  const staffConfirm = async (values: Record<string, string>) => {
-    await unwrap(
-      api.events[":id"]["staff-decision"].$post({
-        param: { id: ev.id },
-        json: {
-          decision: "confirm",
-          note: values.note ?? "",
-          overrideReason: values.overrideReason ?? "",
-        },
-      })
-    )
-    toast.success(`Confirmed “${ev.title}”`)
-    await invalidate(ev.id)
-  }
-
-  const staffReject = async (values: Record<string, string>) => {
-    await unwrap(
-      api.events[":id"]["staff-decision"].$post({
-        param: { id: ev.id },
-        json: { decision: "reject", note: values.note ?? "" },
-      })
-    )
-    toast.success(`Rejected “${ev.title}”`)
-    await invalidate(ev.id)
-  }
-
-  const resolveReview = async (values: Record<string, string>) => {
-    await unwrap(
-      api.events[":id"]["resolve-review"].$post({
-        param: { id: ev.id },
-        json: { reason: values.reason ?? "" },
-      })
-    )
-    toast.success(`Review resolved for “${ev.title}”`)
-    await invalidate(ev.id)
-  }
-
-  const confirmFields: DialogField[] = [
-    { name: "note", label: "Note to requester", placeholder: "Optional" },
-    ...(overrides.length
-      ? [
-          {
-            name: "overrideReason",
-            label: "Override reason",
-            required: true,
-            description: `Required to approve the requested exceptions: ${overrides.map(humanize).join(", ")}.`,
-          } satisfies DialogField,
-        ]
-      : []),
-  ]
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <Link
-            to={`/events/${ev.id}`}
-            className="font-medium underline-offset-4 hover:underline"
-          >
-            {ev.title}
-          </Link>
-          <p className="text-sm text-muted-foreground">
-            {ev.requester.displayName} · {ev.studio.name} · {ev.eventType.name}
-          </p>
-          <p className="text-sm">{fmtDays(ev.days)}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <StateBadge state={ev.state} />
-          {ev.needsReview && <Badge variant="destructive">Needs review</Badge>}
-          {ev.reviewReasons.map((r) => (
-            <Badge key={r} variant="outline">
-              {humanize(r)}
-            </Badge>
-          ))}
-        </div>
-      </div>
-
-      <dl className="grid gap-x-6 gap-y-1 text-sm text-muted-foreground sm:grid-cols-2">
-        <div className="flex gap-2">
-          <dt>Equipment:</dt>
-          <dd>
-            {detail.isPending
-              ? "Loading…"
-              : lines.length
-                ? `${lines.length} line${lines.length === 1 ? "" : "s"}, ${totalQty} item${totalQty === 1 ? "" : "s"}`
-                : "None"}
-          </dd>
-        </div>
-        <div className="flex gap-2">
-          <dt>Submitted:</dt>
-          <dd>
-            {d?.submittedAt
-              ? `${fmtRelative(d.submittedAt, now)} (${fmtInstant(d.submittedAt, tz)})`
-              : "—"}
-          </dd>
-        </div>
-        {ev.sponsor && (
-          <div className="flex gap-2">
-            <dt>Sponsor:</dt>
-            <dd>{ev.sponsor.displayName}</dd>
-          </div>
-        )}
-      </dl>
-
-      {overrides.length > 0 && (
-        <Alert>
-          <AlertTitle>
-            Override requested: {overrides.map(humanize).join(", ")}
-          </AlertTitle>
-          <AlertDescription>
-            {d?.overrideJustification
-              ? `Justification: ${d.overrideJustification}`
-              : "No justification given."}
-          </AlertDescription>
-        </Alert>
-      )}
+      <ApprovalHeader ev={ev} />
+      <ApprovalDetails
+        ev={ev}
+        d={d}
+        loading={detail.isPending}
+        now={now}
+        tz={tz}
+      />
+      <OverrideNotice
+        overrides={overrides}
+        justification={d?.overrideJustification}
+      />
       {detail.error && <ErrorAlert error={detail.error} />}
+      <RowActions ev={ev} kind={kind} d={d} />
+    </div>
+  )
+}
 
-      <div className="flex flex-wrap items-center gap-2">
-        {kind === "sponsor" && d?.can.sponsorDecide && (
-          <>
-            <TextActionDialog
-              trigger={
-                <Button>
-                  <CheckIcon data-icon="inline-start" />
-                  Approve
-                </Button>
-              }
-              title="Approve request"
-              description="Studio staff will be asked to confirm."
-              fields={[
-                { name: "note", label: "Note", placeholder: "Optional" },
-              ]}
-              confirmLabel="Approve"
-              onSubmit={(v) => sponsorDecide(v.note ?? "", "approve")}
-            />
-            <TextActionDialog
-              trigger={
-                <Button variant="outline">
-                  <XIcon data-icon="inline-start" />
-                  Reject
-                </Button>
-              }
-              title="Reject request"
-              description="The requester and sponsor are notified with your reason."
-              fields={[{ name: "note", label: "Reason", required: true }]}
-              confirmLabel="Reject"
-              destructive
-              onSubmit={(v) => sponsorDecide(v.note ?? "", "reject")}
-            />
-          </>
-        )}
-        {kind === "staff" && d?.can.staffDecide && (
-          <>
-            <TextActionDialog
-              trigger={
-                <Button>
-                  <CalendarCheckIcon data-icon="inline-start" />
-                  Confirm
-                </Button>
-              }
-              title="Confirm request"
-              description={
-                overrides.length
-                  ? "This request has exceptions. Your reason is recorded as a policy override."
-                  : "The requester is notified that the booking is confirmed."
-              }
-              fields={confirmFields}
-              confirmLabel="Confirm"
-              onSubmit={staffConfirm}
-            />
-            <TextActionDialog
-              trigger={
-                <Button variant="outline">
-                  <XIcon data-icon="inline-start" />
-                  Reject
-                </Button>
-              }
-              title="Reject request"
-              description="The requester and sponsor are notified with your reason."
-              fields={[{ name: "note", label: "Reason", required: true }]}
-              confirmLabel="Reject"
-              destructive
-              onSubmit={staffReject}
-            />
-          </>
-        )}
-        {kind === "review" && d?.can.resolveReview && (
-          <TextActionDialog
-            trigger={
-              <Button variant="outline">
-                <SearchCheckIcon data-icon="inline-start" />
-                Resolve review
-              </Button>
-            }
-            title="Resolve review"
-            description="Accept the request as-is. Record why the review flag is cleared."
-            fields={[{ name: "reason", label: "Reason", required: true }]}
-            confirmLabel="Resolve"
-            onSubmit={resolveReview}
-          />
-        )}
-        <Button variant="ghost" asChild>
-          <Link to={`/events/${ev.id}`}>
-            Open event
-            <ArrowRightIcon data-icon="inline-end" />
-          </Link>
-        </Button>
+function ApprovalHeader({ ev }: { ev: EventSummary }) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex min-w-0 flex-col gap-1">
+        <Link
+          to={`/events/${ev.id}`}
+          className="font-medium underline-offset-4 hover:underline"
+        >
+          {ev.title}
+        </Link>
+        <p className="text-sm text-muted-foreground">
+          {ev.requester.displayName} · {ev.studio.name} · {ev.eventType.name}
+        </p>
+        <p className="text-sm">{fmtDays(ev.days)}</p>
       </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <StateBadge state={ev.state} />
+        {ev.needsReview && <Badge variant="destructive">Needs review</Badge>}
+        {ev.reviewReasons.map((r) => (
+          <Badge key={r} variant="outline">
+            {humanize(r)}
+          </Badge>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ApprovalDetails({
+  ev,
+  d,
+  loading,
+  now,
+  tz,
+}: {
+  ev: EventSummary
+  d: EventDetail | undefined
+  loading: boolean
+  now: number
+  tz: string
+}) {
+  return (
+    <dl className="grid gap-x-6 gap-y-1 text-sm text-muted-foreground sm:grid-cols-2">
+      <EquipmentLine d={d} loading={loading} />
+      <div className="flex gap-2">
+        <dt>Submitted:</dt>
+        <dd>
+          {d?.submittedAt
+            ? `${fmtRelative(d.submittedAt, now)} (${fmtInstant(d.submittedAt, tz)})`
+            : "—"}
+        </dd>
+      </div>
+      {ev.sponsor && (
+        <div className="flex gap-2">
+          <dt>Sponsor:</dt>
+          <dd>{ev.sponsor.displayName}</dd>
+        </div>
+      )}
+    </dl>
+  )
+}
+
+function EquipmentLine({
+  d,
+  loading,
+}: {
+  d: EventDetail | undefined
+  loading: boolean
+}) {
+  const lines = d?.lines ?? []
+  const totalQty = lines.reduce((n, l) => n + l.qty, 0)
+  return (
+    <div className="flex gap-2">
+      <dt>Equipment:</dt>
+      <dd>
+        {loading
+          ? "Loading…"
+          : lines.length
+            ? `${lines.length} line${lines.length === 1 ? "" : "s"}, ${totalQty} item${totalQty === 1 ? "" : "s"}`
+            : "None"}
+      </dd>
+    </div>
+  )
+}
+
+function OverrideNotice({
+  overrides,
+  justification,
+}: {
+  overrides: string[]
+  justification: string | null | undefined
+}) {
+  if (overrides.length === 0) return null
+  return (
+    <Alert>
+      <AlertTitle>
+        Override requested: {overrides.map(humanize).join(", ")}
+      </AlertTitle>
+      <AlertDescription>
+        {justification
+          ? `Justification: ${justification}`
+          : "No justification given."}
+      </AlertDescription>
+    </Alert>
+  )
+}
+
+function RowActions({
+  ev,
+  kind,
+  d,
+}: {
+  ev: EventSummary
+  kind: "sponsor" | "staff" | "review"
+  d: EventDetail | undefined
+}) {
+  const can = d?.can ?? NO_ACTIONS
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {kind === "sponsor" && can.sponsorDecide && (
+        <SponsorDecisionActions ev={ev} />
+      )}
+      {kind === "staff" && can.staffDecide && (
+        <StaffDecisionActions ev={ev} overrides={d?.overrideRequested ?? []} />
+      )}
+      {kind === "review" && can.resolveReview && <ReviewResolveAction ev={ev} />}
+      <Button variant="ghost" asChild>
+        <Link to={`/events/${ev.id}`}>
+          Open event
+          <ArrowRightIcon data-icon="inline-end" />
+        </Link>
+      </Button>
     </div>
   )
 }

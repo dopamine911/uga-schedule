@@ -1,5 +1,5 @@
-import { can, hasUnscoped, studiosFor } from "@studio/domain"
-import { desc, eq, inArray } from "drizzle-orm"
+import { can, deniedStudios, hasUnscoped, studiosFor } from "@studio/domain"
+import { and, desc, eq, inArray } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
 import { events, holds, users } from "../db/schema.ts"
@@ -51,8 +51,8 @@ function holdRows(db: DB, rows: (typeof holds.$inferSelect)[]) {
 }
 
 function studioStaffRequesterIds(db: DB, user: SessionUser): string[] | null {
-  if (hasUnscoped(user.roles, "hold.view")) return null
-  const studioIds = studiosFor(user.roles, "hold.view")
+  if (hasUnscoped(user, "hold.view")) return null
+  const studioIds = studiosFor(user, "hold.view")
   if (studioIds.length === 0) throw forbidden()
   return [
     ...new Set(
@@ -75,16 +75,42 @@ export const routes = new Hono<AppEnv>()
       return c.json(holdRows(db, db.select().from(holds).where(eq(holds.userId, user.id)).orderBy(desc(holds.createdAt)).all()))
     }
     const scoped = studioStaffRequesterIds(db, user)
-    const rows = db.select().from(holds).orderBy(desc(holds.createdAt)).all()
+    let rows = db.select().from(holds).orderBy(desc(holds.createdAt)).all()
+    // Unscoped viewers with a studio removed (BR-001-15) don't see holds raised on that studio's events.
+    const excluded = scoped ? [] : deniedStudios(user, "hold.view")
+    if (excluded.length) {
+      const hidden = new Set(
+        db
+          .select({ id: events.id })
+          .from(events)
+          .where(inArray(events.studioId, excluded))
+          .all()
+          .map((e) => e.id),
+      )
+      rows = rows.filter((h) => !h.eventId || !hidden.has(h.eventId))
+    }
     return c.json(holdRows(db, scoped ? rows.filter((h) => scoped.includes(h.userId)) : rows))
   })
   .post("/", v("json", createBody), (c) => {
     const user = requireUser(c)
     const db = c.var.db
-    if (!can(user.roles, "checkout.perform") && !can(user.roles, "hold.clear")) throw forbidden()
     const body = c.req.valid("json")
-    if (body.eventId) visibleEvent(db, user, body.eventId)
-    if (!db.select({ id: users.id }).from(users).where(eq(users.id, body.userId)).get()) throw notFound("User")
+    const target = db.select({ id: users.id }).from(users).where(eq(users.id, body.userId)).get()
+    const ev = body.eventId ? visibleEvent(db, user, body.eventId) : null
+    if (ev && ev.requesterId !== body.userId) throw conflict("NOT_REQUESTER", "That person did not request this event.")
+    if (!can(user, "hold.clear")) {
+      // Studio staff may hold only people who have requested one of their studios.
+      const studioIds = studiosFor(user, "checkout.perform")
+      const theirs =
+        studioIds.length > 0 &&
+        db
+          .select({ id: events.id })
+          .from(events)
+          .where(and(eq(events.requesterId, body.userId), inArray(events.studioId, studioIds)))
+          .get()
+      if (!theirs) throw forbidden()
+    }
+    if (!target) throw notFound("User")
     const hold = db.transaction(() =>
       placeHold(db, {
         userId: body.userId,
@@ -100,7 +126,7 @@ export const routes = new Hono<AppEnv>()
   .post("/:id/clear", v("json", clearBody), (c) => {
     const user = requireUser(c)
     const db = c.var.db
-    if (!can(user.roles, "hold.clear")) throw forbidden()
+    if (!can(user, "hold.clear")) throw forbidden()
     const hold = db.select().from(holds).where(eq(holds.id, c.req.param("id"))).get()
     if (!hold) throw notFound("Hold")
     if (hold.status !== "active") throw conflict("NOT_ACTIVE", "This hold is already cleared.")

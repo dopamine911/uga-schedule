@@ -10,8 +10,10 @@ import {
   ErrorAlert,
   LoadingBlock,
   PageHeader,
+  useNavAllowed,
 } from "@/components/common"
 import { type DialogField, TextActionDialog } from "@/components/events/shared"
+import { NoAccess } from "@/components/admin/shared"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -69,6 +71,12 @@ const CLEAR_FIELDS: DialogField[] = [
 ]
 
 export function HoldsPage() {
+  const navAllowed = useNavAllowed()
+  if (!navAllowed("/holds")) return <NoAccess title="Holds" />
+  return <HoldsBody />
+}
+
+function HoldsBody() {
   const can = useCan()
   const tz = useTz()
   const qc = useQueryClient()
@@ -133,7 +141,11 @@ export function HoldsPage() {
         <EmptyState
           icon={ShieldCheckIcon}
           title="No holds"
-          description={`No ${filter === "all" ? "" : filter} holds.`}
+          description={
+            filter === "all"
+              ? "No holds have been placed."
+              : `No ${filter} holds.`
+          }
         />
       ) : (
         <Table>

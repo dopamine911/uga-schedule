@@ -1,6 +1,6 @@
 import { can } from "@studio/domain"
 import { and, eq, inArray, isNull } from "drizzle-orm"
-import { createHash, randomBytes } from "node:crypto"
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto"
 import { Hono } from "hono"
 import type { DB } from "../db/client.ts"
 import {
@@ -13,14 +13,15 @@ import {
   studios,
   users,
 } from "../db/schema.ts"
-import type { AppEnv } from "../env.ts"
+import type { AppEnv, SessionUser } from "../env.ts"
 import { config } from "../config.ts"
-import { requireUser } from "../lib/auth.ts"
+import { loadSessionUser, requireUser } from "../lib/auth.ts"
 import { now } from "../lib/clock.ts"
 import { forbidden, notFound } from "../lib/errors.ts"
 import { localLabel, pickupOpensAt, typeOf } from "../services/lifecycle.ts"
 
-// F-009 calendar feeds (ICS only in v0). Personal and studio feeds are token-authenticated (BR-009-06).
+// F-009 calendar feeds (ICS only in v0). Feeds are token-authenticated (BR-009-06) and always belong to one
+// user: a studio feed is that staff member's view of a studio, so it stops when their account or role does.
 
 const DAY_MS = 86_400_000
 /** Events shown in feeds: 30 days back to 180 days ahead (BR-009-06). */
@@ -29,22 +30,54 @@ const WINDOW_AHEAD_DAYS = 180
 const FEED_STATES = ["Submitted", "SponsorApproved", "Confirmed", "InProgress", "PostEvent", "Closed"] as const
 const PENDING = ["Submitted", "SponsorApproved"]
 
-function newToken(): string {
-  return randomBytes(24).toString("base64url")
+type FeedRow = typeof icsFeeds.$inferSelect
+
+/**
+ * The URL token is `<feed id>.<HMAC of id and stored nonce>`. The database holds only the nonce, so reading
+ * the table does not yield a working feed link (NFR-SEC-02).
+ */
+function signature(feed: FeedRow): string {
+  return createHmac("sha256", config.sessionSecret).update(`ics:${feed.id}:${feed.token}`).digest("base64url")
 }
 
-function originOf(url: string): string {
-  return new URL(url).origin
+function feedUrl(feed: FeedRow): string {
+  return `${config.publicBaseUrl}/ics/${feed.id}.${signature(feed)}.ics`
 }
 
-function feedUrl(origin: string, token: string): string {
-  return `${origin}/ics/${token}.ics`
+function feedOwner(userId: string, studioId: string | null) {
+  return and(
+    eq(icsFeeds.userId, userId),
+    studioId ? eq(icsFeeds.studioId, studioId) : isNull(icsFeeds.studioId),
+    isNull(icsFeeds.revokedAt),
+  )
 }
 
-function activeFeed(db: DB, where: { userId: string } | { studioId: string }) {
-  const cond =
-    "userId" in where ? and(eq(icsFeeds.userId, where.userId), isNull(icsFeeds.revokedAt)) : and(eq(icsFeeds.studioId, where.studioId), isNull(icsFeeds.revokedAt))
-  return db.select().from(icsFeeds).where(cond).get()
+function newFeed(db: DB, userId: string, studioId: string | null): FeedRow {
+  return db.insert(icsFeeds).values({ userId, studioId, token: randomBytes(32).toString("base64url") }).returning().get()
+}
+
+/** The caller's current feed link, created on first use; `rotate` revokes the old link first. */
+function feedFor(db: DB, userId: string, studioId: string | null, rotate = false): FeedRow {
+  return db.transaction(() => {
+    if (rotate) db.update(icsFeeds).set({ revokedAt: now() }).where(feedOwner(userId, studioId)).run()
+    return db.select().from(icsFeeds).where(feedOwner(userId, studioId)).get() ?? newFeed(db, userId, studioId)
+  })
+}
+
+/** Resolves a URL token to a live feed whose owner may still read it; undefined otherwise. */
+function feedByToken(db: DB, token: string): FeedRow | undefined {
+  const dot = token.indexOf(".")
+  if (dot < 0) return undefined
+  const feed = db.select().from(icsFeeds).where(and(eq(icsFeeds.id, token.slice(0, dot)), isNull(icsFeeds.revokedAt))).get()
+  if (!feed?.userId) return undefined
+  const given = Buffer.from(token.slice(dot + 1))
+  const expected = Buffer.from(signature(feed))
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) return undefined
+  // Disabled accounts and staff who lost the studio lose the feed too (BR-001-09).
+  const owner = loadSessionUser(db, feed.userId)
+  if (!owner) return undefined
+  if (feed.studioId && !can(owner, "event.view", { studioId: feed.studioId })) return undefined
+  return feed
 }
 
 // ── ICS formatting (RFC 5545) ────────────────────────────────────────
@@ -147,8 +180,10 @@ function personalFeed(db: DB, userId: string): string {
   return renderCalendarFor(db, visible, { titlesOnly: false })
 }
 
+/** A staff member's view of one studio: booked time with titles; pending requests are left out (F-009 §5). */
 function studioFeed(db: DB, studioId: string): string {
-  const rows = db.select().from(events).where(and(eq(events.studioId, studioId), inArray(events.state, [...FEED_STATES]))).all()
+  const booked = FEED_STATES.filter((s) => !PENDING.includes(s))
+  const rows = db.select().from(events).where(and(eq(events.studioId, studioId), inArray(events.state, booked))).all()
   return renderCalendarFor(db, rows, { titlesOnly: true })
 }
 
@@ -157,7 +192,6 @@ function renderCalendarFor(
   rows: (typeof events.$inferSelect)[],
   opts: { titlesOnly: boolean },
 ): string {
-  const stamp = icsUtc(now())
   const days = dayRows(db, rows.map((r) => r.id))
   const byId = new Map(rows.map((r) => [r.id, r]))
   const studioNames = new Map(db.select({ id: studios.id, name: studios.name, location: studios.location }).from(studios).all().map((s) => [s.id, s]))
@@ -171,7 +205,8 @@ function renderCalendarFor(
     const title = `${pending ? "[Pending] " : ""}[${studio?.name ?? ""}] ${ev.title}`
     const base: VEventInput = {
       uid: `${d.id}@studio-scheduling`,
-      stamp,
+      // Last revision, not fetch time, so an unchanged feed keeps its ETag (RFC 5545 §3.8.7.2).
+      stamp: icsUtc(ev.updatedAt),
       start: icsUtc(d.startsAt),
       end: icsUtc(d.endsAt),
       sequence: ev.sequence,
@@ -211,51 +246,45 @@ function sha1(s: string): string {
 
 // ── Routes ───────────────────────────────────────────────────────────
 
+function requireStudioAccess(db: DB, user: SessionUser, studioId: string): void {
+  if (!can(user, "event.view", { studioId })) throw forbidden()
+  if (!db.select({ id: studios.id }).from(studios).where(eq(studios.id, studioId)).get()) throw notFound("Studio")
+}
+
 export const routes = new Hono<AppEnv>()
   .get("/feed", (c) => {
     const user = requireUser(c)
-    const db = c.var.db
-    let feed = activeFeed(db, { userId: user.id })
-    if (!feed) feed = db.insert(icsFeeds).values({ userId: user.id, token: newToken() }).returning().get()
-    return c.json({ url: feedUrl(originOf(c.req.url), feed.token) })
+    return c.json({ url: feedUrl(feedFor(c.var.db, user.id, null)) })
   })
   .post("/feed/regenerate", (c) => {
     const user = requireUser(c)
-    const db = c.var.db
-    const feed = db.transaction(() => {
-      db.update(icsFeeds).set({ revokedAt: now() }).where(and(eq(icsFeeds.userId, user.id), isNull(icsFeeds.revokedAt))).run()
-      return db.insert(icsFeeds).values({ userId: user.id, token: newToken() }).returning().get()
-    })
-    return c.json({ url: feedUrl(originOf(c.req.url), feed.token) })
+    return c.json({ url: feedUrl(feedFor(c.var.db, user.id, null, true)) })
   })
   .get("/studio-feed/:studioId", (c) => {
     const user = requireUser(c)
-    const db = c.var.db
     const studioId = c.req.param("studioId")
-    if (!can(user.roles, "event.view", { studioId })) throw forbidden()
-    if (!db.select({ id: studios.id }).from(studios).where(eq(studios.id, studioId)).get()) throw notFound("Studio")
-    let feed = activeFeed(db, { studioId })
-    if (!feed) feed = db.insert(icsFeeds).values({ studioId, token: newToken() }).returning().get()
-    return c.json({ url: feedUrl(originOf(c.req.url), feed.token) })
+    requireStudioAccess(c.var.db, user, studioId)
+    return c.json({ url: feedUrl(feedFor(c.var.db, user.id, studioId)) })
+  })
+  .post("/studio-feed/:studioId/regenerate", (c) => {
+    const user = requireUser(c)
+    const studioId = c.req.param("studioId")
+    requireStudioAccess(c.var.db, user, studioId)
+    return c.json({ url: feedUrl(feedFor(c.var.db, user.id, studioId, true)) })
   })
 
 /** /ics — public, token-authenticated ICS feeds (BR-009-06). */
 export const icsRoutes = new Hono<AppEnv>().get("/:file", (c) => {
   const file = c.req.param("file")
   if (!file.endsWith(".ics")) throw notFound("Feed")
-  const token = file.slice(0, -".ics".length)
   const db = c.var.db
-  const feed = db
-    .select()
-    .from(icsFeeds)
-    .where(and(eq(icsFeeds.token, token), isNull(icsFeeds.revokedAt)))
-    .get()
+  const feed = feedByToken(db, file.slice(0, -".ics".length))
   if (!feed) throw notFound("Feed")
-  const body = feed.userId ? personalFeed(db, feed.userId) : studioFeed(db, feed.studioId!)
+  const body = feed.studioId ? studioFeed(db, feed.studioId) : personalFeed(db, feed.userId!)
   const etag = `"${sha1(body)}"`
   const headers = {
     etag,
-    "cache-control": "no-cache",
+    "cache-control": "private, no-cache",
     "x-published-ttl": "PT15M",
     "content-type": "text/calendar; charset=utf-8",
   }

@@ -153,6 +153,7 @@ export const routes = new Hono<AppEnv>()
     )
     return c.json({
       state: ev.state,
+      termsVersion: config.termsVersion,
       window: { opensAt: pickupOpensAt(db, ev), noShowAt: noShowAt(db, ev) },
       blockers: blockersFor(db, ev),
       lines: lines.map((l) => ({

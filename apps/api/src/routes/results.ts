@@ -25,6 +25,7 @@ import {
   checkinComplete,
   getEvent,
   itemsOf,
+  localLabel,
   packageOf,
   publishPackage,
   typeOf,
@@ -47,7 +48,7 @@ const publishBody = z.object({ overrideReason: z.string().trim().optional() })
 
 /** Who may view a package (BR-008-05): studio staff, EM, admin; the requester while collecting if allowed to upload. */
 function canViewPackage(db: DB, user: SessionUser, ev: EventRow, pkg: PackageRow): boolean {
-  if (can(user.roles, "results.view", { studioId: ev.studioId })) return true
+  if (can(user, "results.view", { studioId: ev.studioId })) return true
   const requester = ev.requesterId === user.id
   if (pkg.status === "collecting") return requester && typeOf(db, ev.eventTypeId).requesterCanUpload
   return requester || ev.sponsorId === user.id || participantIds(db, ev.id).includes(user.id)
@@ -61,10 +62,18 @@ function visiblePackage(db: DB, user: SessionUser, eventId: string): { ev: Event
   return { ev, pkg }
 }
 
+/** Loads an item with its package and event, for a caller who may view the package; 404 otherwise. */
+function visibleItem(db: DB, user: SessionUser, itemId: string) {
+  const item = db.select().from(resultItems).where(eq(resultItems.id, itemId)).get()
+  const owner = item && db.select({ eventId: resultPackages.eventId }).from(resultPackages).where(eq(resultPackages.id, item.packageId)).get()
+  if (!item || !owner) throw notFound("Item")
+  return { item, ...visiblePackage(db, user, owner.eventId) }
+}
+
 function canUpload(db: DB, user: SessionUser, ev: EventRow, pkg: PackageRow): boolean {
   if (pkg.status !== "collecting") return false
   return (
-    can(user.roles, "results.upload", { studioId: ev.studioId }) ||
+    can(user, "results.upload", { studioId: ev.studioId }) ||
     (ev.requesterId === user.id && typeOf(db, ev.eventTypeId).requesterCanUpload)
   )
 }
@@ -85,6 +94,12 @@ function itemOut(i: typeof resultItems.$inferSelect) {
     uploadedBy: i.uploadedBy,
     uploadedAt: i.uploadedAt,
   }
+}
+
+/** When a pending sponsor sign-off may be bypassed with a reason (BR-008-06); null when none is pending. */
+function signoffOverrideAt(db: DB, required: boolean, pkg: PackageRow): string | null {
+  if (!required || pkg.sponsorSignoff !== "pending") return null
+  return new Date(Date.parse(pkg.createdAt) + getPolicies(db).SIGNOFF_PUBLISH_AFTER_DAYS * DAY_MS).toISOString()
 }
 
 export const routes = new Hono<AppEnv>()
@@ -117,6 +132,7 @@ export const routes = new Hono<AppEnv>()
     const type = typeOf(db, ev.eventTypeId)
     const isSponsor = ev.sponsorId === user.id
     const items = itemsOf(db, pkg.id)
+    const overrideAt = signoffOverrideAt(db, type.requiresSponsorSignoff, pkg)
     return c.json({
       eventId: ev.id,
       title: ev.title,
@@ -129,6 +145,9 @@ export const routes = new Hono<AppEnv>()
       sponsorSignoff: pkg.sponsorSignoff,
       sponsorComment: pkg.sponsorComment,
       signedOffAt: pkg.signedOffAt,
+      /** While sign-off is pending: when staff may publish without it (BR-008-06). */
+      signoffOverrideAt: overrideAt,
+      signoffBlocksPublish: overrideAt !== null && now() < overrideAt,
       checkinReport: pkg.checkinReport ?? null,
       items: items.map(itemOut),
       can: {
@@ -137,7 +156,7 @@ export const routes = new Hono<AppEnv>()
           pkg.status === "collecting" &&
           ev.state === "PostEvent" &&
           checkinComplete(db, ev.id) &&
-          can(user.roles, "results.upload", { studioId: ev.studioId }),
+          can(user, "results.upload", { studioId: ev.studioId }),
         signoff: pkg.sponsorSignoff === "pending" && isSponsor && type.requiresSponsorSignoff,
       },
     })
@@ -195,12 +214,10 @@ export const routes = new Hono<AppEnv>()
   .delete("/items/:id", async (c) => {
     const user = requireUser(c)
     const db = c.var.db
-    const item = db.select().from(resultItems).where(eq(resultItems.id, c.req.param("id"))).get()
-    if (!item) throw notFound("Item")
-    const { ev, pkg } = visiblePackage(db, user, item.packageId)
+    const { item, ev, pkg } = visibleItem(db, user, c.req.param("id"))
     if (pkg.status !== "collecting") throw conflict("NOT_COLLECTING", "Results are closed for changes.")
     const isUploader = item.uploadedBy === user.id && canUpload(db, user, ev, pkg)
-    if (!isUploader && !can(user.roles, "results.upload", { studioId: ev.studioId })) throw forbidden()
+    if (!isUploader && !can(user, "results.upload", { studioId: ev.studioId })) throw forbidden()
     db.transaction(() => {
       db.delete(resultItems).where(eq(resultItems.id, item.id)).run()
       audit(db, { actorId: user.id, action: "results.item_remove", entityType: "result_item", entityId: item.id, before: { title: item.title } })
@@ -231,7 +248,7 @@ export const routes = new Hono<AppEnv>()
     const db = c.var.db
     const body = c.req.valid("json")
     const { ev, pkg } = visiblePackage(db, user, c.req.param("eventId"))
-    if (!can(user.roles, "results.upload", { studioId: ev.studioId })) throw forbidden()
+    if (!can(user, "results.upload", { studioId: ev.studioId })) throw forbidden()
     if (pkg.status !== "collecting") throw conflict("NOT_COLLECTING", "The package is already published.")
     if (ev.state !== "PostEvent") throw conflict("INVALID_STATE", `Publishing is not available while the event is ${ev.state}.`)
     if (!checkinComplete(db, ev.id)) throw conflict("CHECKIN_INCOMPLETE", "Check-in must be complete before publishing.")
@@ -239,11 +256,10 @@ export const routes = new Hono<AppEnv>()
     const type = typeOf(db, ev.eventTypeId)
     const reasons: string[] = []
     if (type.requiresResults && itemsOf(db, pkg.id).length === 0) reasons.push("no results uploaded")
-    const daysSinceCreated = (Date.parse(now()) - Date.parse(pkg.createdAt)) / DAY_MS
-    if (type.requiresSponsorSignoff && pkg.sponsorSignoff === "pending") {
-      const after = getPolicies(db).SIGNOFF_PUBLISH_AFTER_DAYS
-      if (daysSinceCreated < after)
-        throw conflict("SIGNOFF_PENDING", `Sponsor sign-off is pending; publish without it after ${after} days.`)
+    const overrideAt = signoffOverrideAt(db, type.requiresSponsorSignoff, pkg)
+    if (overrideAt !== null) {
+      if (now() < overrideAt)
+        throw conflict("SIGNOFF_PENDING", `Sponsor sign-off is pending; publish without it after ${localLabel(overrideAt)}.`)
       reasons.push("sponsor sign-off pending")
     }
     const override = body.overrideReason?.trim() ?? ""
@@ -259,9 +275,7 @@ export const routes = new Hono<AppEnv>()
   .get("/items/:id/download", async (c) => {
     const user = requireUser(c)
     const db = c.var.db
-    const item = db.select().from(resultItems).where(eq(resultItems.id, c.req.param("id"))).get()
-    if (!item) throw notFound("Item")
-    const { pkg } = visiblePackage(db, user, item.packageId)
+    const { item, pkg } = visibleItem(db, user, c.req.param("id"))
     if (pkg.status === "expired") throw conflict("EXPIRED", "These files have expired and were removed.")
     if (item.kind === "link") return c.json({ url: item.url })
     if (!item.storageKey) throw notFound("File")

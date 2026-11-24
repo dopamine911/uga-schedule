@@ -5,6 +5,7 @@ import {
   can,
   editAction,
   hasHard,
+  deniedStudios,
   hasUnscoped,
   nextState,
   softCodes,
@@ -154,7 +155,10 @@ function draftInput(requesterId: string, body: DraftBody, lines: { equipmentType
   }
 }
 
-/** Replaces days, equipment lines and participants (plain replace, F-006 §6). */
+/**
+ * Replaces days, equipment lines and participants (F-006 §6). Day rows are reused in date order so
+ * their ids, and the calendar UIDs built from them, survive an edit (BR-009-01).
+ */
 function writeRows(
   db: DB,
   eventId: string,
@@ -162,22 +166,18 @@ function writeRows(
   lines: readonly { equipmentTypeId: string; qty: number }[],
   participants: readonly string[],
 ): void {
-  db.delete(eventDays).where(eq(eventDays.eventId, eventId)).run()
+  const existing = daysOf(db, eventId)
+  const wanted = [...intervals].sort((a, b) => a.day.localeCompare(b.day))
+  wanted.forEach((d, i) => {
+    const row = { day: d.day, startTime: d.startTime, endTime: d.endTime, startsAt: d.start, endsAt: d.end }
+    const keep = existing[i]
+    if (keep) db.update(eventDays).set(row).where(eq(eventDays.id, keep.id)).run()
+    else db.insert(eventDays).values({ ...row, eventId }).run()
+  })
+  const surplus = existing.slice(wanted.length).map((d) => d.id)
+  if (surplus.length) db.delete(eventDays).where(inArray(eventDays.id, surplus)).run()
   db.delete(equipmentLines).where(eq(equipmentLines.eventId, eventId)).run()
   db.delete(eventParticipants).where(eq(eventParticipants.eventId, eventId)).run()
-  if (intervals.length)
-    db.insert(eventDays)
-      .values(
-        intervals.map((d) => ({
-          eventId,
-          day: d.day,
-          startTime: d.startTime,
-          endTime: d.endTime,
-          startsAt: d.start,
-          endsAt: d.end,
-        })),
-      )
-      .run()
   if (lines.length) db.insert(equipmentLines).values(lines.map((l) => ({ ...l, eventId }))).run()
   if (participants.length)
     db.insert(eventParticipants).values(participants.map((userId) => ({ eventId, userId }))).run()
@@ -254,14 +254,24 @@ function detailOf(db: DB, user: SessionUser, ev: EventRow) {
     .where(eq(equipmentLines.eventId, ev.id))
     .all()
   const typeNames = new Map(lines.map((l) => [l.equipmentTypeId, l.typeName]))
+  // Asset tags are for the desk and inventory staff only (F-001 §3 note 3).
+  const seesTags = can(user, "checkout.perform", { studioId: ev.studioId }) || can(user, "inventory.manage")
+  const unitIds = seesTags ? records.flatMap((r) => (r.unitId ? [r.unitId] : [])) : []
   const assetTags = new Map(
-    db.select({ id: equipmentUnits.id, assetTag: equipmentUnits.assetTag }).from(equipmentUnits).all().map((u) => [u.id, u.assetTag]),
+    unitIds.length
+      ? db
+          .select({ id: equipmentUnits.id, assetTag: equipmentUnits.assetTag })
+          .from(equipmentUnits)
+          .where(inArray(equipmentUnits.id, unitIds))
+          .all()
+          .map((u) => [u.id, u.assetTag])
+      : [],
   )
 
-  const holdRows = can(user.roles, "hold.view", { own: mine, studioId: ev.studioId })
+  const holdRows = can(user, "hold.view", { own: mine, studioId: ev.studioId })
     ? db.select().from(holds).where(eq(holds.eventId, ev.id)).all()
     : []
-  const overrides = can(user.roles, "event.override_policy", { studioId: ev.studioId })
+  const overrides = can(user, "event.override_policy", { studioId: ev.studioId })
     ? db.select().from(policyOverrides).where(eq(policyOverrides.eventId, ev.id)).all()
     : []
   const outstanding = records.filter((r) => outstandingQty(r) > 0)
@@ -406,13 +416,19 @@ export const routes = new Hono<AppEnv>()
     const q = c.req.valid("query")
     let candidates: EventRow[]
     if (q.scope === "all") {
-      if (!hasUnscoped(user.roles, "event.view")) throw forbidden()
-      candidates = db.select().from(events).all()
+      if (!hasUnscoped(user, "event.view")) throw forbidden()
+      const excluded = deniedStudios(user, "event.view")
+      candidates = db.select().from(events).all().filter((e) => !excluded.includes(e.studioId))
     } else if (q.scope === "sponsoring") {
       candidates = db.select().from(events).where(eq(events.sponsorId, user.id)).all()
     } else if (q.scope === "studio") {
-      const ids = studiosFor(user.roles, "event.view")
-      candidates = ids.length ? db.select().from(events).where(inArray(events.studioId, ids)).all() : []
+      // Admins hold event.view everywhere, so their queue covers every studio (BR-006-09).
+      const ids = studiosFor(user, "event.view")
+      if (hasUnscoped(user, "event.view")) {
+        const excluded = deniedStudios(user, "event.view")
+        candidates = db.select().from(events).all().filter((e) => !excluded.includes(e.studioId))
+      }
+      else candidates = ids.length ? db.select().from(events).where(inArray(events.studioId, ids)).all() : []
     } else {
       const partOf = new Set(
         db
@@ -492,6 +508,8 @@ export const routes = new Hono<AppEnv>()
     const ev = visibleEvent(db, user, c.req.param("id"))
     if (!allowed(user, "event.edit", ev.studioId, isRequester(user, ev))) throw forbidden()
     requireState(ev, EDITABLE)
+    // Staff may only move a request into a studio they also cover.
+    if (body.studioId !== ev.studioId && !allowed(user, "event.edit", body.studioId, isRequester(user, ev))) throw forbidden()
     const { intervals, lines, participants } = normalise(db, body, ev.requesterId)
     const patch = {
       title: body.title,
@@ -531,8 +549,16 @@ export const routes = new Hono<AppEnv>()
       const soft = softCodes(issues)
       const justification = body.justification?.trim() ?? ""
       if (soft.length && !justification) throw issuesConflict(issues)
+      // A request sent back for approval gets a fresh decision clock (BR-006-11); the staff clock runs from sponsorDecidedAt.
+      const clock =
+        action === "change_approval"
+          ? { submittedAt: now(), sponsorDecidedAt: null }
+          : action && target === "SponsorApproved"
+            ? { sponsorDecidedAt: now() }
+            : {}
       const fields = {
         ...patch,
+        ...clock,
         overrideRequested: soft,
         overrideJustification: soft.length ? justification : "",
         needsReview: false,

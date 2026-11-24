@@ -48,6 +48,10 @@ import {
 const HOUR_MS = 3_600_000
 const DAY_MS = 86_400_000
 const SLA_THRESHOLDS = [50, 90] as const
+/** A reminder found this long after it was due is dropped instead of sent late (e.g. after downtime). */
+const REMINDER_STALE_MS = HOUR_MS
+/** Stages only run for booked events; one sent back for approval or already over is left alone. */
+const STAGE_STATES: readonly EventRow["state"][] = ["Confirmed", "InProgress"]
 
 /** Notifies recipients who have not yet received this notification key (notify itself is idempotent per key). */
 function notifyOnce(
@@ -77,9 +81,14 @@ function sendDueReminders(db: DB, at: string): number {
     .where(and(eq(stageInstances.status, "scheduled"), eq(stageInstances.kind, "reminder"), lte(stageInstances.dueAt, at)))
     .all()
   let sent = 0
+  const nowMs = Date.parse(at)
   for (const s of due) {
     const ev = getEvent(db, s.eventId)
-    if (!ev) continue
+    if (!ev || !STAGE_STATES.includes(ev.state)) continue
+    if (nowMs - Date.parse(s.dueAt) > REMINDER_STALE_MS) {
+      db.update(stageInstances).set({ status: "skipped" }).where(eq(stageInstances.id, s.id)).run()
+      continue
+    }
     db.update(stageInstances).set({ status: "sent" }).where(eq(stageInstances.id, s.id)).run()
     notify(db, {
       code: "STAGE_REMINDER",
@@ -100,10 +109,12 @@ function markOverdueTasks(db: DB, at: string): number {
     .from(stageInstances)
     .where(and(eq(stageInstances.status, "open"), eq(stageInstances.kind, "task"), lte(stageInstances.dueAt, at)))
     .all()
+  let marked = 0
   for (const s of late) {
-    db.update(stageInstances).set({ status: "overdue" }).where(eq(stageInstances.id, s.id)).run()
     const ev = getEvent(db, s.eventId)
-    if (!ev) continue
+    if (!ev || !STAGE_STATES.includes(ev.state)) continue
+    db.update(stageInstances).set({ status: "overdue" }).where(eq(stageInstances.id, s.id)).run()
+    marked++
     notify(db, {
       code: "TASK_DUE",
       to: stageAudience(db, s.eventId, s),
@@ -113,7 +124,7 @@ function markOverdueTasks(db: DB, at: string): number {
       key: `TASK_DUE:${s.id}`,
     })
   }
-  return late.length
+  return marked
 }
 
 // ── Decision SLAs and cutoffs (BR-006-07) ────────────────────────────
@@ -166,7 +177,8 @@ function sendDecisionReminders(db: DB, at: string): number {
         eventId: ev.id,
         subject: `Decision due: ${ev.title}`,
         body: `This request is ${pct}% of the way to its decision deadline.`,
-        key: `${isSponsorStage ? "SPONSOR_DECISION_DUE" : "STAFF_DECISION_DUE"}:${ev.id}:${pct}`,
+        // Keyed by the clock start so a request sent back for approval is reminded again.
+        key: `${isSponsorStage ? "SPONSOR_DECISION_DUE" : "STAFF_DECISION_DUE"}:${ev.id}:${since}:${pct}`,
       })
     }
   }

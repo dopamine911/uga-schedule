@@ -5,6 +5,7 @@ import type {
   HoldReason,
   PackageStatus,
   ReviewReason,
+  Permission,
   RoleCode,
   SoftPolicyCode,
   StageAnchor,
@@ -45,6 +46,25 @@ export const roleAssignments = sqliteTable(
     assignedAt: createdAt(),
   },
   (t) => [uniqueIndex("role_assignment_uq").on(t.userId, t.role, t.studioId)],
+)
+
+/**
+ * Permissions removed from one user regardless of the roles that grant them: everywhere when
+ * studioId is null (BR-001-14), or for one studio's records (BR-001-15).
+ */
+export const permissionDenials = sqliteTable(
+  "permission_denials",
+  {
+    id: id(),
+    userId: text("user_id").notNull().references(() => users.id),
+    permission: text("permission").$type<Permission>().notNull(),
+    studioId: text("studio_id").references(() => studios.id),
+    reason: text("reason").notNull(),
+    createdBy: text("created_by").references(() => users.id),
+    createdAt: createdAt(),
+  },
+  // NULL studio ids are distinct in SQLite unique indexes; the route checks duplicates explicitly.
+  (t) => [uniqueIndex("permission_denial_uq").on(t.userId, t.permission, t.studioId)],
 )
 
 // ── F-002 ──────────────────────────────────────────────────────────────

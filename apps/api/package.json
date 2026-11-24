@@ -7,10 +7,10 @@
     ".": "./src/app.ts"
   },
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "DEV_MODE=1 tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "db:reset": "tsx src/db/reset.ts",
-    "test": "vitest run",
+    "test": "DEV_MODE=1 vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

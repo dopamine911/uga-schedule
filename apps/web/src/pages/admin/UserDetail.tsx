@@ -1,6 +1,12 @@
 import { ROLES } from "@studio/domain"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { KeyRoundIcon, PlusIcon, ShieldIcon, UserIcon } from "lucide-react"
+import {
+  KeyRoundIcon,
+  PencilIcon,
+  PlusIcon,
+  ShieldIcon,
+  UserIcon,
+} from "lucide-react"
 import { type ReactNode, useState } from "react"
 import { Link, useParams } from "react-router"
 import { toast } from "sonner"
@@ -20,12 +26,25 @@ import {
   useStudios,
   NONE,
 } from "@/components/admin/pickers"
+import { EditProfileDialog } from "@/components/admin/UserDialogs"
+import { UserPermissionsCard } from "@/components/admin/UserPermissions"
+import { ROLE_INFO } from "@/lib/roles"
 import {
   ConfirmButton,
   FormDialog,
   RequirePerm,
   StatusBadge,
 } from "@/components/admin/shared"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -35,6 +54,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Field, FieldLabel } from "@/components/ui/field"
 import {
   Table,
   TableBody,
@@ -72,6 +93,8 @@ function UserContent({ user }: { user: UserRecord }) {
   const qc = useQueryClient()
   const tz = useTz()
   const [adding, setAdding] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [confirmDisable, setConfirmDisable] = useState(false)
 
   const toggle = useMutation({
     mutationFn: (active: boolean) =>
@@ -127,7 +150,18 @@ function UserContent({ user }: { user: UserRecord }) {
             <span aria-hidden>/</span>
             <span>{user.email}</span>
             <StatusBadge status={user.status} />
+            <Badge variant={user.linked ? "success" : "info"}>
+              {user.linked
+                ? "Linked to university sign-in"
+                : "Invited — not signed in yet"}
+            </Badge>
           </span>
+        }
+        actions={
+          <Button variant="outline" onClick={() => setEditing(true)}>
+            <PencilIcon data-icon="inline-start" />
+            Edit profile
+          </Button>
         }
       />
 
@@ -152,9 +186,33 @@ function UserContent({ user }: { user: UserRecord }) {
               label="Account active"
               description="Disabled accounts can't sign in. The last active Admin can't be disabled."
               checked={user.status === "active"}
-              onCheckedChange={(v) => toggle.mutate(v)}
+              onCheckedChange={(v) =>
+                v ? toggle.mutate(true) : setConfirmDisable(true)
+              }
               disabled={toggle.isPending}
             />
+            <AlertDialog open={confirmDisable} onOpenChange={setConfirmDisable}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    Disable {user.displayName}?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    They can no longer sign in, and their calendar feed stops.
+                    Open requests they sponsor are flagged for review.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Keep active</AlertDialogCancel>
+                  <AlertDialogAction
+                    variant="destructive"
+                    onClick={() => toggle.mutate(false)}
+                  >
+                    Disable account
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             {toggle.error && <ErrorAlert error={toggle.error} />}
           </CardContent>
         </Card>
@@ -195,7 +253,7 @@ function UserContent({ user }: { user: UserRecord }) {
                   {user.roles.map((r) => (
                     <TableRow key={r.id}>
                       <TableCell className="font-medium">
-                        {humanize(r.role)}
+                        {ROLE_INFO[r.role].label}
                       </TableCell>
                       <TableCell>{r.studioName ?? "—"}</TableCell>
                       <TableCell>
@@ -220,6 +278,8 @@ function UserContent({ user }: { user: UserRecord }) {
           </CardContent>
         </Card>
       </div>
+
+      <UserPermissionsCard user={user} />
 
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4">
@@ -275,6 +335,9 @@ function UserContent({ user }: { user: UserRecord }) {
       {adding && (
         <AddRoleDialog userId={user.id} onClose={() => setAdding(false)} />
       )}
+      {editing && (
+        <EditProfileDialog user={user} onClose={() => setEditing(false)} />
+      )}
     </div>
   )
 }
@@ -289,6 +352,8 @@ function AddRoleDialog({
   const qc = useQueryClient()
   const studios = useStudios()
   const [v, set] = useForm({ role: "", studioId: NONE })
+  const [ack, setAck] = useState(false)
+  const elevated = v.role === "ADMIN" || v.role === "EQUIPMENT_MANAGER"
   const isStudio = v.role === STUDIO_ROLE
   const studioId = isStudio && v.studioId !== NONE ? v.studioId : null
   const save = useMutation({
@@ -314,14 +379,17 @@ function AddRoleDialog({
       pending={save.isPending}
       error={save.error}
       submitLabel="Add role"
-      submitDisabled={!v.role || (isStudio && !studioId)}
+      submitDisabled={!v.role || (isStudio && !studioId) || (elevated && !ack)}
     >
       <LabeledField label="Role" htmlFor="role-select">
         <SimpleSelect
           id="role-select"
           value={v.role}
-          onValueChange={(x) => set("role", x)}
-          options={ROLES.map((r) => ({ value: r, label: humanize(r) }))}
+          onValueChange={(x) => {
+            set("role", x)
+            setAck(false)
+          }}
+          options={ROLES.map((r) => ({ value: r, label: ROLE_INFO[r].label }))}
           placeholder="Choose a role"
         />
       </LabeledField>
@@ -340,6 +408,21 @@ function AddRoleDialog({
             }
           />
         </LabeledField>
+      )}
+      {elevated && (
+        <Field orientation="horizontal">
+          <Checkbox
+            id="role-ack"
+            checked={ack}
+            onCheckedChange={(on) => setAck(on === true)}
+          />
+          <FieldLabel htmlFor="role-ack" className="font-normal">
+            I understand {humanize(v.role)} gives this person{" "}
+            {v.role === "ADMIN"
+              ? "full control of settings, users and roles."
+              : "full control of inventory, grants and holds."}
+          </FieldLabel>
+        </Field>
       )}
     </FormDialog>
   )

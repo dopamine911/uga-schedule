@@ -10,8 +10,8 @@ import {
   FormDialog,
   RequirePerm,
   StatusBadge,
-  toastSaved,
 } from "@/components/admin/shared"
+import { toastSaved } from "@/components/admin/formHelpers"
 import {
   type EquipmentClass,
   LabeledField,

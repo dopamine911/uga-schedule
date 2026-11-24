@@ -138,6 +138,20 @@ export function ThemeProvider({
     }
   }, [theme, applyTheme])
 
+  // Reads the current theme when the key is pressed, so the listener is attached once. The next theme
+  // is worked out here, not inside a state updater, so saving it runs exactly once.
+  const toggleTheme = React.useEffectEvent(() => {
+    const nextTheme =
+      theme === "dark"
+        ? "light"
+        : theme === "light"
+          ? "dark"
+          : getSystemTheme() === "dark"
+            ? "light"
+            : "dark"
+    setTheme(nextTheme)
+  })
+
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) {
@@ -156,19 +170,7 @@ export function ThemeProvider({
         return
       }
 
-      setThemeState((currentTheme) => {
-        const nextTheme =
-          currentTheme === "dark"
-            ? "light"
-            : currentTheme === "light"
-              ? "dark"
-              : getSystemTheme() === "dark"
-                ? "light"
-                : "dark"
-
-        localStorage.setItem(storageKey, nextTheme)
-        return nextTheme
-      })
+      toggleTheme()
     }
 
     window.addEventListener("keydown", handleKeyDown)
@@ -176,7 +178,7 @@ export function ThemeProvider({
     return () => {
       window.removeEventListener("keydown", handleKeyDown)
     }
-  }, [storageKey])
+  }, [])
 
   React.useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {

@@ -81,10 +81,11 @@ export function ParticipantsPicker({
 }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState("")
+  const term = q.trim()
   const search = useQuery({
-    queryKey: ["users", "search", q.trim()],
-    queryFn: () => unwrap(api.users.search.$get({ query: { q: q.trim() } })),
-    enabled: open,
+    queryKey: ["users", "search", term],
+    queryFn: () => unwrap(api.users.search.$get({ query: { q: term } })),
+    enabled: open && term.length >= 2,
   })
   const blocked = new Set([...excludeIds, ...value.map((p) => p.id)])
   const candidates = (search.data ?? []).filter((u) => !blocked.has(u.id))
@@ -127,7 +128,11 @@ export function ParticipantsPicker({
               onValueChange={setQ}
             />
             <CommandList>
-              {search.isPending && open ? (
+              {term.length < 2 ? (
+                <div className="p-3 text-sm text-muted-foreground">
+                  Type at least 2 letters to search
+                </div>
+              ) : search.isPending ? (
                 <div className="p-3 text-sm text-muted-foreground">
                   Searching…
                 </div>

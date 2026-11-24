@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { FormDialog, toastSaved } from "@/components/admin/shared"
+import { toastSaved } from "@/components/admin/formHelpers"
+import { FormDialog } from "@/components/admin/shared"
+import { STOCK_BUCKETS, UNIT_TRANSITIONS } from "@/components/admin/unitStatus"
 import {
   LabeledField,
   NONE,
@@ -13,36 +15,6 @@ import { DatePicker } from "@/components/DatePicker"
 import { api, unwrap } from "@/lib/api"
 
 // Dialogs on the equipment type page: add a serialized unit, change a unit's status, adjust bulk stock.
-
-/** Lifecycle moves outside checkout and check-in (F-003 §3). Mirrors the API's TRANSITIONS table. */
-export const UNIT_TRANSITIONS: Record<
-  string,
-  readonly { value: string; label: string }[]
-> = {
-  available: [
-    { value: "damaged", label: "Damaged" },
-    { value: "retired", label: "Retired" },
-  ],
-  damaged: [
-    { value: "in_repair", label: "In repair" },
-    { value: "retired", label: "Retired" },
-  ],
-  in_repair: [
-    { value: "available", label: "Available" },
-    { value: "retired", label: "Retired" },
-  ],
-  lost: [
-    { value: "available", label: "Available" },
-    { value: "retired", label: "Retired" },
-  ],
-}
-
-export const STOCK_BUCKETS = [
-  { value: "available", label: "Available" },
-  { value: "damaged", label: "Damaged" },
-  { value: "in_repair", label: "In repair" },
-  { value: "lost", label: "Lost" },
-]
 
 export function AddUnitDialog({
   typeId,

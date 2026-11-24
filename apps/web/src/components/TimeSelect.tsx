@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils"
 // Themed replacement for <input type="time">: a list of slots on the studio's granularity, with
 // unavailable slots shown but disabled (and labelled why).
 
-export function timeSlots(min: string, max: string, step: number): string[] {
+function timeSlots(min: string, max: string, step: number): string[] {
   const out: string[] = []
   for (let m = minutesOf(min); m <= minutesOf(max); m += step)
     out.push(timeOf(m))

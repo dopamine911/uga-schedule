@@ -54,9 +54,12 @@ export function EventListPage() {
       ? [{ value: "all" as const, label: "All" }]
       : []),
   ]
+  // A sponsor who cannot request studio time has no "Mine" requests; their default is what they sponsor.
+  const defaultScope: Scope =
+    hasRole("SPONSOR") && !can("event.create") ? "sponsoring" : "mine"
   const requested = params.get("scope")
   const scope: Scope =
-    scopes.find((s) => s.value === requested)?.value ?? "mine"
+    scopes.find((s) => s.value === requested)?.value ?? defaultScope
   const state = params.get("state") ?? ALL_STATES
 
   const query = useQuery({
@@ -147,11 +150,15 @@ export function EventListPage() {
                 <TableRow>
                   <TableHead>Title</TableHead>
                   <TableHead>State</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Studio</TableHead>
-                  <TableHead>Requester</TableHead>
-                  <TableHead>Days</TableHead>
-                  <TableHead>Next action</TableHead>
+                  <TableHead className="hidden lg:table-cell">Type</TableHead>
+                  <TableHead className="hidden md:table-cell">Studio</TableHead>
+                  <TableHead className="hidden lg:table-cell">
+                    Requester
+                  </TableHead>
+                  <TableHead className="hidden md:table-cell">Days</TableHead>
+                  <TableHead className="hidden lg:table-cell">
+                    Next action
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -164,6 +171,11 @@ export function EventListPage() {
                       >
                         {e.title}
                       </Link>
+                      {/* Below md the days and studio columns are hidden, so they sit under the title. */}
+                      <span className="flex flex-col text-sm font-normal text-muted-foreground md:hidden">
+                        <span>{fmtDays(e.days)}</span>
+                        <span>{e.studio.name}</span>
+                      </span>
                     </TableCell>
                     <TableCell>
                       <span className="flex flex-wrap gap-1">
@@ -173,13 +185,21 @@ export function EventListPage() {
                         )}
                       </span>
                     </TableCell>
-                    <TableCell>{e.eventType.name}</TableCell>
-                    <TableCell>{e.studio.name}</TableCell>
-                    <TableCell>{e.requester.displayName}</TableCell>
-                    <TableCell className="whitespace-nowrap">
+                    <TableCell className="hidden lg:table-cell">
+                      {e.eventType.name}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      {e.studio.name}
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      {e.requester.displayName}
+                    </TableCell>
+                    <TableCell className="hidden whitespace-nowrap md:table-cell">
                       {fmtDays(e.days)}
                     </TableCell>
-                    <TableCell>{e.nextAction ?? "—"}</TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      {e.nextAction ?? "—"}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

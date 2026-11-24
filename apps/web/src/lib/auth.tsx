@@ -21,12 +21,15 @@ export function useTz(): string {
 /** UI-side permission check for showing/hiding controls. The API enforces the same rules. */
 export function useCan() {
   const user = useUser()
-  return (perm: Permission, ctx?: PermissionContext) => can(user.roles, perm, ctx)
+  return (perm: Permission, ctx?: PermissionContext) => can(user, perm, ctx)
 }
 
 export function useHasRole() {
   const user = useUser()
-  return (...roles: string[]) => user.roles.some((r) => roles.includes(r.role))
+  return (...roles: string[]) => {
+    const wanted = new Set(roles)
+    return user.roles.some((r) => wanted.has(r.role))
+  }
 }
 
 export function useSignOut() {

@@ -208,7 +208,7 @@ const courseBody = z.object({
 })
 const coursePatch = courseBody.partial()
 const enrollBody = z.object({ userIds: z.array(z.string()).min(1) })
-const rosterBody = z.object({ emails: z.array(z.string()) })
+const rosterBody = z.object({ emails: z.array(z.string()).min(1) })
 const grantBody = z.object({
   userId: z.string(),
   levelId: z.string(),
@@ -477,21 +477,25 @@ export const routes = new Hono<AppEnv>()
     const id = c.req.param("id")
     const course = courseOf(db, id)
     const wanted = [...new Set(c.req.valid("json").emails.map((e) => e.trim().toLowerCase()).filter(Boolean))]
+    // Disabled accounts still match, so a roster that lists them does not drop their enrolment.
     const matched = wanted.length
       ? db
-          .select({ id: users.id, email: users.email })
+          .select({ id: users.id, email: users.email, status: users.status })
           .from(users)
-          .where(and(eq(users.status, "active"), inArray(sql`lower(${users.email})`, wanted)))
+          .where(inArray(sql`lower(${users.email})`, wanted))
           .all()
       : []
+    // A roster matching nobody is a wrong file or a typo, not a request to drop the whole course.
+    if (matched.length === 0) throw badRequest("ROSTER_NO_MATCH", "None of these emails match a user, so nothing was changed.")
     const idByEmail = new Map(matched.map((u) => [u.email.toLowerCase(), u.id]))
     const unmatched = wanted.filter((e) => !idByEmail.has(e))
     const wantedIds = new Set(idByEmail.values())
+    const activeIds = new Set(matched.filter((u) => u.status === "active").map((u) => u.id))
 
     const result = db.transaction(() => {
       const current = activeEnrollments(db, id)
       const currentIds = new Set(current.map((e) => e.userId))
-      const toAdd = [...wantedIds].filter((u) => !currentIds.has(u))
+      const toAdd = [...activeIds].filter((u) => !currentIds.has(u))
       const toDrop = current.filter((e) => !wantedIds.has(e.userId))
       const added = enrollUsers(db, id, toAdd, me.id)
       let flaggedEvents = 0
@@ -499,7 +503,7 @@ export const routes = new Hono<AppEnv>()
       const summary = {
         added: added.length,
         dropped: toDrop.length,
-        unchanged: wantedIds.size - added.length,
+        unchanged: current.length - toDrop.length,
         unmatched,
         flaggedEvents,
       }
@@ -508,7 +512,7 @@ export const routes = new Hono<AppEnv>()
         action: "roster.import",
         entityType: "course",
         entityId: id,
-        after: summary,
+        after: { ...summary, unmatched: unmatched.length },
       })
       notify(db, {
         code: "ROSTER_IMPORT_SUMMARY",

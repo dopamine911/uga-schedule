@@ -406,7 +406,7 @@ export const routes = new Hono<AppEnv>()
       const own =
         b.requesterId === me.id || b.sponsorId === me.id || (participants.get(b.eventId)?.has(me.id) ?? false)
       // F-001 matrix: staff of this studio, Equipment Managers and Admins see titles; others only their own.
-      const canSeeDetails = can(me.roles, "event.view", { own, studioId: id })
+      const canSeeDetails = can(me, "event.view", { own, studioId: id })
       const base = {
         start: b.dayStart,
         end: b.dayEnd,

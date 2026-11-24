@@ -7,6 +7,7 @@ import {
   PackageOpenIcon,
 } from "lucide-react"
 import { Link } from "react-router"
+import { NoAccess } from "@/components/admin/shared"
 import {
   EmptyState,
   ErrorAlert,
@@ -14,6 +15,7 @@ import {
   LoadingBlock,
   PageHeader,
   StateBadge,
+  useNavAllowed,
 } from "@/components/common"
 import type { EventSummary } from "@/components/events/shared"
 import {
@@ -35,7 +37,8 @@ import { api, unwrap } from "@/lib/api"
 import { useHasRole, useTz } from "@/lib/auth"
 import { fmtDays, fmtInstant, humanize } from "@/lib/format"
 
-export function DeskPage() {
+/** Desk queues: confirmed pickups for today and tomorrow, and events with equipment still out. Shared with the dashboard. */
+export function useDeskQueues(enabled = true) {
   const hasRole = useHasRole()
   // Equipment managers and admins see every studio; studio staff see their own.
   const scope = hasRole("EQUIPMENT_MANAGER", "ADMIN") ? "all" : "studio"
@@ -51,6 +54,7 @@ export function DeskPage() {
     // Pickup opens before the first day; the server's checkout window is shown per row.
     select: (rows) =>
       rows.filter((r) => (r.days[0] ? r.days[0].day <= tomorrow : false)),
+    enabled,
   })
   const returns = useQuery({
     queryKey: ["events", "desk", "out", scope],
@@ -64,7 +68,20 @@ export function DeskPage() {
         r.nextAction?.startsWith("Return equipment")
       )
     },
+    enabled,
   })
+
+  return { tz, now, pickups, returns }
+}
+
+export function DeskPage() {
+  const navAllowed = useNavAllowed()
+  if (!navAllowed("/desk")) return <NoAccess title="Equipment desk" />
+  return <DeskBody />
+}
+
+function DeskBody() {
+  const { tz, now, pickups, returns } = useDeskQueues()
 
   return (
     <div className="flex flex-col gap-6">

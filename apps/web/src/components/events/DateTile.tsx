@@ -1,10 +1,11 @@
+import { fmtMonth, fmtWeekday } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 /** Calendar-page tile for a "YYYY-MM-DD" date: red month band over an Oswald day number. */
 export function DateTile({ day, className }: { day: string; className?: string }) {
   const d = new Date(`${day}T12:00:00Z`)
-  const month = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" }).format(d)
-  const weekday = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" }).format(d)
+  const month = fmtMonth(day)
+  const weekday = fmtWeekday(day)
   return (
     <div
       className={cn("bg-card flex w-14 shrink-0 flex-col overflow-hidden rounded-md border text-center", className)}

@@ -72,10 +72,16 @@ export function ResultsListPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {r.publishedAt ? fmtInstant(r.publishedAt, tz) : "—"}
+                      {r.publishedAt
+                        ? fmtInstant(r.publishedAt, tz)
+                        : "Not yet published"}
                     </TableCell>
                     <TableCell>
-                      {r.status === "expired" ? "Expired" : (r.daysLeft ?? "—")}
+                      {r.status === "expired"
+                        ? "Expired"
+                        : r.status === "collecting"
+                          ? "Starts when published"
+                          : (r.daysLeft ?? "—")}
                     </TableCell>
                   </TableRow>
                 ))}

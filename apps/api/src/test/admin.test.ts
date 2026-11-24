@@ -222,3 +222,65 @@ describe("equipment availability for the booking form", () => {
     expect(chloeRow).toMatchObject({ eligible: true })
   })
 })
+
+describe("approval queue and directory scope", () => {
+  it("shows an admin every studio's requests in the studio queue", async () => {
+    const h = createHarness()
+    const ada = await h.as("ada.admin")
+    const queue = await ada.get("/api/events?scope=studio")
+    expect(queue.status).toBe(200)
+    expect(queue.body.map((e: { title: string }) => e.title)).toContain(THESIS)
+  })
+
+  it("keeps the user directory from studio staff and from an untyped search", async () => {
+    const h = createHarness()
+    const sam = await h.as("sam.staff")
+    expect((await sam.get("/api/users")).status).toBe(403)
+    expect((await sam.get(`/api/users/${userEmailed(h.db, "alice.student@university.edu").id}`)).status).toBe(404)
+    expect((await sam.get("/api/users/search")).body).toEqual([])
+    expect((await sam.get("/api/users/search?q=ali")).body.map((u: { displayName: string }) => u.displayName)).toEqual(["Alice Student"])
+  })
+})
+
+describe("studio staff stay inside their studios", () => {
+  it("cannot move a booking into a studio they do not staff", async () => {
+    const h = createHarness()
+    const thesis = eventTitled(h.db, THESIS)
+    const tara = await h.as("tara.tech")
+    const moved = await tara.put(`/api/events/${thesis.id}`, {
+      title: thesis.title,
+      description: thesis.description,
+      eventTypeId: thesis.eventTypeId,
+      studioId: studioNamed(h.db, "Studio C").id,
+      sponsorId: thesis.sponsorId,
+      participantIds: [],
+      days: h.db.select().from(eventDays).where(eq(eventDays.eventId, thesis.id)).all().map((d) => ({ day: d.day, startTime: d.startTime, endTime: d.endTime })),
+      lines: [],
+    })
+    expect(moved.status).toBe(403)
+    expect(eventTitled(h.db, THESIS).studioId).toBe(thesis.studioId)
+  })
+
+  it("can place a hold only on someone who requested one of their studios", async () => {
+    const h = createHarness()
+    const alice = userEmailed(h.db, "alice.student@university.edu") // has requested Studio A only
+    const hold = { userId: alice.id, note: "Left the booth unlocked" }
+    expect((await (await h.as("tara.tech")).post("/api/holds", hold)).status).toBe(403)
+    expect((await (await h.as("sam.staff")).post("/api/holds", hold)).status).toBe(201)
+  })
+})
+
+describe("roster import guards", () => {
+  it("rejects an empty or wholly unmatched roster and leaves enrolments alone", async () => {
+    const h = createHarness()
+    const eli = await h.as("eli.manager")
+    const course = h.db.select().from(courseOfferings).all()[0]!
+    const enrolled = () =>
+      h.db.select().from(enrollments).where(and(eq(enrollments.courseOfferingId, course.id), eq(enrollments.status, "enrolled"))).all().length
+    const before = enrolled()
+    expect(before).toBeGreaterThan(0)
+    expect((await eli.post(`/api/levels/courses/${course.id}/roster`, { emails: [] })).status).toBe(400)
+    expect((await eli.post(`/api/levels/courses/${course.id}/roster`, { emails: ["nobody@elsewhere.edu"] })).status).toBe(400)
+    expect(enrolled()).toBe(before)
+  })
+})

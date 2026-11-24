@@ -4,7 +4,7 @@ import type { Context, MiddlewareHandler } from "hono"
 import { deleteCookie, getSignedCookie, setSignedCookie } from "hono/cookie"
 import { config } from "../config.ts"
 import type { DB } from "../db/client.ts"
-import { roleAssignments, users } from "../db/schema.ts"
+import { permissionDenials, roleAssignments, users } from "../db/schema.ts"
 import type { AppEnv, SessionUser } from "../env.ts"
 import { forbidden, unauthorized } from "./errors.ts"
 
@@ -32,7 +32,12 @@ export function loadSessionUser(db: DB, userId: string): SessionUser | null {
     .from(roleAssignments)
     .where(eq(roleAssignments.userId, u.id))
     .all()
-  return { id: u.id, email: u.email, displayName: u.displayName, affiliation: u.affiliation, roles }
+  const denied = db
+    .select({ permission: permissionDenials.permission, studioId: permissionDenials.studioId })
+    .from(permissionDenials)
+    .where(eq(permissionDenials.userId, u.id))
+    .all()
+  return { id: u.id, email: u.email, displayName: u.displayName, affiliation: u.affiliation, roles, denied }
 }
 
 /** Resolves the session cookie into c.var.user (null when signed out). */
@@ -51,6 +56,6 @@ export function requireUser(c: Context<AppEnv>): SessionUser {
 /** Server-side permission check (BR-001-12). Throws 401/403. */
 export function authorize(c: Context<AppEnv>, perm: Permission, ctx?: PermissionContext): SessionUser {
   const u = requireUser(c)
-  if (!can(u.roles, perm, ctx)) throw forbidden()
+  if (!can(u, perm, ctx)) throw forbidden()
   return u
 }

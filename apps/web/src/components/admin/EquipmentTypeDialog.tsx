@@ -1,10 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import {
-  FormDialog,
-  intOrUndefined,
-  toastSaved,
-} from "@/components/admin/shared"
+import { intOrUndefined, toastSaved } from "@/components/admin/formHelpers"
+import { FormDialog } from "@/components/admin/shared"
 import {
   ClassSelect,
   type EquipmentType,

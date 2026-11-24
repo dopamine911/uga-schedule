@@ -4,6 +4,11 @@ import { config } from "./config.ts"
 import { openDb } from "./db/client.ts"
 import { runJobs } from "./jobs/tick.ts"
 
+if (!config.sessionSecret) {
+  console.error("SESSION_SECRET is required. For local development start with DEV_MODE=1 (pnpm dev does).")
+  process.exit(1)
+}
+
 const db = openDb()
 const app = createApp(db)
 

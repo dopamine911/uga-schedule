@@ -148,18 +148,18 @@ export function seed(db: DB): void {
     const st = (eventTypeId: string, rows: Omit<typeof s.stageTemplates.$inferInsert, "eventTypeId">[]) =>
       t.insert(s.stageTemplates).values(rows.map((r) => ({ ...r, eventTypeId }))).run()
     st(podcast!.id, [
-      { seq: 1, name: "Booking confirmed", kind: "reminder", anchor: "event_start", offsetMinutes: -7 * D, recipients: ["requester", "sponsor"], message: "Your podcast session in {studio.name} is confirmed for {event.first_day}." },
+      { seq: 1, name: "Your session: what to expect", kind: "reminder", anchor: "event_start", offsetMinutes: -7 * D, recipients: ["requester", "sponsor"], message: "Your podcast session in {studio.name} is on {event.first_day}. Pickup opens {pickup.window}." },
       { seq: 2, name: "Tomorrow: session details", kind: "reminder", anchor: "event_start", offsetMinutes: -D, recipients: ["requester", "participants"], message: "Reminder: {event.title} starts tomorrow. Pickup opens {pickup.window}." },
       { seq: 3, name: "Return equipment", kind: "reminder", anchor: "event_end", offsetMinutes: -30, recipients: ["requester"], message: "Please return all equipment for {event.title} on time." },
     ])
     st(shoot!.id, [
-      { seq: 1, name: "Booking confirmed", kind: "reminder", anchor: "event_start", offsetMinutes: -14 * D, recipients: ["requester", "sponsor"], message: "{event.title} is confirmed." },
+      { seq: 1, name: "Your shoot: what to expect", kind: "reminder", anchor: "event_start", offsetMinutes: -14 * D, recipients: ["requester", "sponsor"], message: "{event.title} in {studio.name} starts {event.first_day}. Pickup opens {pickup.window}." },
       { seq: 2, name: "Submit shot list", kind: "task", anchor: "event_start", offsetMinutes: -3 * D, recipients: ["requester"], assigneeRole: "requester", message: "Upload or share your shot list with studio staff." },
       { seq: 3, name: "Tomorrow: pickup details", kind: "reminder", anchor: "event_start", offsetMinutes: -D, recipients: ["requester", "participants"], message: "Pickup opens {pickup.window}." },
       { seq: 4, name: "Daily start reminder", kind: "reminder", anchor: "each_day_start", offsetMinutes: -60, recipients: ["requester", "participants"], message: "Your shoot day starts in one hour." },
     ])
     st(thesis!.id, [
-      { seq: 1, name: "Booking confirmed summary", kind: "reminder", anchor: "event_start", offsetMinutes: -14 * D, recipients: ["requester", "sponsor"], message: "{event.title} is confirmed." },
+      { seq: 1, name: "Your production: what to expect", kind: "reminder", anchor: "event_start", offsetMinutes: -14 * D, recipients: ["requester", "sponsor"], message: "{event.title} in {studio.name} starts {event.first_day}. Pickup opens {pickup.window}." },
       { seq: 2, name: "Submit shot list", kind: "task", anchor: "event_start", offsetMinutes: -7 * D, recipients: ["requester"], assigneeRole: "requester", message: "Share your shot list." },
       { seq: 3, name: "Safety briefing acknowledged", kind: "task", anchor: "event_start", offsetMinutes: -3 * D, recipients: ["requester", "studio_staff"], assigneeRole: "requester", blocksCheckout: true, message: "Complete the sound stage safety briefing." },
       { seq: 4, name: "Tomorrow: pickup details", kind: "reminder", anchor: "event_start", offsetMinutes: -D, recipients: ["requester", "participants"], message: "Pickup opens {pickup.window}." },

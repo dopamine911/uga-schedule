@@ -21,6 +21,8 @@ pnpm db:reset     # creates apps/api/data/studio.db with demo data
 pnpm dev          # API on :3001, web on :5173 (proxies /api and /ics)
 ```
 
+`pnpm dev` sets `DEV_MODE=1`, which turns on the demo sign-in and the clock controls. Without it the API has no sign-in route and refuses to start unless `SESSION_SECRET` is set. `CAMPUS_TZ` defaults to `America/New_York`.
+
 Open http://localhost:5173 and sign in as any demo user. Dev sign-in replaces SSO.
 
 | User | Role |
@@ -39,7 +41,11 @@ The **clock button** in the header is available in dev mode only. It moves time 
 ```sh
 pnpm test        # domain unit tests + API integration tests
 pnpm typecheck
+pnpm --filter web lint
+pnpm doctor      # React Doctor scan of apps/web (pinned in devDependencies)
 ```
+
+React Doctor also runs on every pull request and on pushes to `main` (`.github/workflows/react-doctor.yml`). It comments with new findings and never fails the check; set `blocking` in that file to gate on them.
 
 ## v0 scope versus the specs
 

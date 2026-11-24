@@ -1,6 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { FormDialog, toastSaved } from "@/components/admin/shared"
+import {
+  coursePayload,
+  courseDatesChanged,
+  courseFormValues,
+  courseRangeInvalid,
+  courseSubmitDisabled,
+} from "@/components/admin/courseForm"
+import { toastSaved } from "@/components/admin/formHelpers"
+import { FormDialog } from "@/components/admin/shared"
 import {
   type CourseSummary,
   LabeledField,
@@ -17,6 +25,20 @@ export type CourseFields = Pick<
   "id" | "courseCode" | "section" | "term" | "startDate" | "endDate" | "levelId"
 >
 
+function DatesChangedAlert() {
+  return (
+    <Alert>
+      <AlertTitle>
+        Enrolled students' grants will follow the new dates
+      </AlertTitle>
+      <AlertDescription>
+        Every course grant of this offering moves to the new start and end
+        dates when you save.
+      </AlertDescription>
+    </Alert>
+  )
+}
+
 /** Create a course offering, or edit one. Changing dates moves every enrolled student's course grant (BR-002-03). */
 export function CourseDialog({
   initial,
@@ -26,29 +48,13 @@ export function CourseDialog({
   onClose: () => void
 }) {
   const qc = useQueryClient()
-  const [v, set] = useForm({
-    courseCode: initial?.courseCode ?? "",
-    section: initial?.section ?? "",
-    term: initial?.term ?? "",
-    startDate: initial?.startDate ?? "",
-    endDate: initial?.endDate ?? "",
-    levelId: initial?.levelId ?? "",
-  })
-  const datesChanged =
-    !!initial &&
-    (v.startDate !== initial.startDate || v.endDate !== initial.endDate)
-  const invalidRange = !!v.startDate && !!v.endDate && v.endDate < v.startDate
+  const [v, set] = useForm(courseFormValues(initial))
+  const datesChanged = courseDatesChanged(v, initial)
+  const invalidRange = courseRangeInvalid(v)
 
   const save = useMutation({
     mutationFn: () => {
-      const json = {
-        courseCode: v.courseCode.trim(),
-        section: v.section.trim(),
-        term: v.term.trim(),
-        startDate: v.startDate,
-        endDate: v.endDate,
-        levelId: v.levelId,
-      }
+      const json = coursePayload(v)
       return initial
         ? unwrap(
             api.levels.courses[":id"].$patch({
@@ -79,26 +85,9 @@ export function CourseDialog({
       onSubmit={() => save.mutate()}
       pending={save.isPending}
       error={save.error}
-      submitDisabled={
-        !v.courseCode.trim() ||
-        !v.term.trim() ||
-        !v.startDate ||
-        !v.endDate ||
-        !v.levelId ||
-        invalidRange
-      }
+      submitDisabled={courseSubmitDisabled(v)}
     >
-      {datesChanged && (
-        <Alert>
-          <AlertTitle>
-            Enrolled students' grants will follow the new dates
-          </AlertTitle>
-          <AlertDescription>
-            Every course grant of this offering moves to the new start and end
-            dates when you save.
-          </AlertDescription>
-        </Alert>
-      )}
+      {datesChanged && <DatesChangedAlert />}
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField
           id="course-code"
