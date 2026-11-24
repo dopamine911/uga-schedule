@@ -12,6 +12,7 @@ import {
   expiringGrantsOf,
   unreadOf,
   upcomingState,
+  waitingCountOf,
 } from "@/pages/dashboard-data"
 
 /** Everything the home page shows, fetched and derived once. */
@@ -93,5 +94,7 @@ export function useDashboardData() {
     upcoming,
     upcomingQuery: upcomingState(mine, sponsoring, isSponsor, upcoming),
     unread: unreadOf(notifications.data),
+    waitingCount: waitingCountOf(mine.data, sponsoring.data),
+    roles: user.roles.map((assignment) => assignment.role),
   }
 }

@@ -1,6 +1,10 @@
+import type { RoleCode } from "@studio/domain"
 import {
   BellIcon,
   CalendarCheckIcon,
+  ClockIcon,
+  HourglassIcon,
+  OctagonAlertIcon,
   CalendarDaysIcon,
   ListTodoIcon,
   PackageIcon,
@@ -8,7 +12,6 @@ import {
   PlusIcon,
   type LucideIcon,
 } from "lucide-react"
-import { useMemo } from "react"
 import { Link } from "react-router"
 import {
   EmptyState,
@@ -29,7 +32,10 @@ import {
 } from "@/components/ui/card"
 import { fmtDay, fmtDays, fmtInstant, firstName, humanize } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { primaryRole } from "@/lib/nav"
+import { ROLE_INFO } from "@/lib/roles"
 import {
+  type AttentionChip,
   clearanceSentence,
   type CountSource,
   countOf,
@@ -43,94 +49,93 @@ import {
 
 // Sections of the home page. Each is one card, banner row or hero block; DashboardPage composes them.
 
-/** Black hero: date, greeting, clearance line, request CTA and the three counts. */
-export function DashboardHero({
+/** Chip colours per tone: red = act now, amber = needs you, blue = waiting on someone else (index.css colour jobs). */
+const ATTENTION_CHIP_CLASS: Record<AttentionChip["tone"], string> = {
+  "act-now": "bg-destructive/10 text-destructive",
+  "needs-you": "bg-warning text-warning-foreground",
+  waiting: "bg-info text-info-foreground",
+}
+const ATTENTION_CHIP_ICON: Record<AttentionChip["tone"], LucideIcon> = {
+  "act-now": OctagonAlertIcon,
+  "needs-you": ClockIcon,
+  waiting: HourglassIcon,
+}
+
+/**
+ * Light page header: a chip naming the user's role, a sentence-case greeting, the clearance line,
+ * and coloured count chips for what needs attention. Replaces the black hero, whose three grey
+ * counts all looked equally (un)important. The date moved to the top bar.
+ */
+export function DashboardHeader({
   now,
   tz,
   displayName,
+  roles,
   level,
   canRequest,
-  upcomingCount,
-  actionCount,
-  unreadCount,
+  chips,
 }: {
   now: number
   tz: string
   displayName: string
+  roles: readonly RoleCode[]
   level: { name: string } | null | undefined
   canRequest: boolean
-  upcomingCount: number
-  actionCount: number
-  unreadCount: number
+  chips: readonly AttentionChip[]
 }) {
-  const dayFormat = useMemo(
-    () =>
-      new Intl.DateTimeFormat("en-US", {
-        weekday: "long",
-        month: "long",
-        day: "numeric",
-        timeZone: tz,
-      }),
-    [tz]
-  )
+  const role = primaryRole(roles)
+  const RoleIcon = role ? ROLE_INFO[role].icon : null
   return (
-    <section className="relative overflow-hidden rounded-xl bg-brand-black text-white">
-      {/* Decorative bands, kept off the text area. White, not red: red is reserved for "act now". */}
-      <div
-        aria-hidden="true"
-        className="absolute -top-10 -right-16 h-56 w-40 rotate-[24deg] bg-white/15"
-      />
-      <div
-        aria-hidden="true"
-        className="absolute -top-10 right-28 h-56 w-6 rotate-[24deg] bg-white/10"
-      />
-      <div className="relative flex flex-col gap-6 p-6 md:p-8 lg:flex-row lg:items-end lg:justify-between">
-        <div className="flex max-w-xl flex-col gap-2">
-          <p className="text-xs font-bold tracking-[0.2em] text-white/70 uppercase">
-            {dayFormat.format(new Date(now))}
+    <header className="flex flex-wrap items-end justify-between gap-5 border-b pb-6">
+      <div className="flex min-w-0 flex-col gap-3">
+        {role && RoleIcon && (
+          <p className="flex w-fit items-center gap-2 rounded-full border bg-card px-3 py-1 text-sm font-bold text-muted-foreground shadow-xs">
+            <RoleIcon aria-hidden="true" className="size-3.5" />
+            {roles.length > 1
+              ? [...new Set(roles.map((r) => ROLE_INFO[r].label))].join(" · ")
+              : ROLE_INFO[role].label}
           </p>
-          <h1 className="text-4xl font-medium tracking-wide uppercase md:text-5xl">
-            {greeting(now, tz)}, {firstName(displayName)}
-          </h1>
-          <p className="text-sm text-white/80">
-            {clearanceSentence(level)}
-            Your bookings, approvals and alerts in one place.
-          </p>
-          {canRequest && (
-            <div className="pt-2">
-              <Button
-                asChild
-                size="lg"
-                className="bg-white text-brand-black hover:bg-white/90"
-              >
-                <Link to="/events/new">
-                  <PlusIcon data-icon="inline-start" />
-                  Request studio time
-                </Link>
-              </Button>
-            </div>
-          )}
-        </div>
-        <dl className="grid grid-cols-3 gap-3 lg:mr-28">
-          <HeroStat label="Upcoming" value={upcomingCount} />
-          <HeroStat label="Need you" value={actionCount} />
-          <HeroStat label="Unread" value={unreadCount} />
-        </dl>
+        )}
+        <h1 className="text-4xl leading-tight font-medium md:text-5xl">
+          {greeting(now, tz)}, {firstName(displayName)}
+        </h1>
+        {level && (
+          <p className="text-muted-foreground">{clearanceSentence(level)}</p>
+        )}
+        {chips.length > 0 ? (
+          <ul aria-label="Summary" className="flex flex-wrap gap-2">
+            {chips.map((chip) => {
+              const Icon = ATTENTION_CHIP_ICON[chip.tone]
+              return (
+                <li
+                  key={chip.tone}
+                  className={cn(
+                    "flex items-center gap-2 rounded-full py-1 pr-3 pl-1 text-sm font-bold",
+                    ATTENTION_CHIP_CLASS[chip.tone]
+                  )}
+                >
+                  <span className="grid h-7 min-w-7 place-items-center rounded-full bg-card px-2 font-heading text-base font-medium tabular-nums">
+                    {chip.value}
+                  </span>
+                  <Icon aria-hidden="true" className="size-4" />
+                  {chip.label}
+                </li>
+              )
+            })}
+          </ul>
+        ) : (
+          <p className="text-muted-foreground">Nothing needs you right now.</p>
+        )}
       </div>
-    </section>
-  )
-}
-
-function HeroStat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="flex min-w-20 flex-col-reverse items-center rounded-lg border border-white/15 bg-white/5 px-4 py-3">
-      <dt className="text-[0.625rem] font-bold tracking-[0.15em] text-white/70 uppercase">
-        {label}
-      </dt>
-      <dd className="font-heading text-3xl font-medium tabular-nums">
-        {value}
-      </dd>
-    </div>
+      {canRequest && (
+        <Button asChild size="lg">
+          <Link to="/events/new">
+            <PlusIcon data-icon="inline-start" />
+            Request studio time
+          </Link>
+        </Button>
+      )}
+    </header>
   )
 }
 

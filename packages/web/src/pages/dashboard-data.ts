@@ -153,6 +153,54 @@ export function buildActions(
   ]
 }
 
+/** Events (mine or sponsored, counted once) whose next step is someone else's. */
+export function waitingCountOf(
+  mine: readonly EventSummary[] | undefined,
+  sponsoring: readonly EventSummary[] | undefined
+): number {
+  const waiting = [...(mine ?? []), ...(sponsoring ?? [])].filter(
+    (e) => e.nextAction !== null && e.nextAction.startsWith("Waiting")
+  )
+  return new Set(waiting.map((e) => e.id)).size
+}
+
+/** One coloured count chip in the dashboard header. Tone follows the colour jobs in index.css. */
+export interface AttentionChip {
+  tone: "act-now" | "needs-you" | "waiting"
+  label: string
+  value: number
+}
+
+/**
+ * Header chips, most urgent first, leaving out zero counts.
+ * The dashboard rows carry no deadlines, so urgency comes from the kind of item, not from time left:
+ * - Act now (red): late equipment returns and holds that block new requests.
+ * - Needs you (amber): decisions or steps waiting on this user, and access that is about to expire.
+ * - Waiting on others (blue): the user's or sponsored requests whose next step is someone else's.
+ */
+export function attentionChips(counts: {
+  overdueReturns: number
+  activeHolds: number
+  actions: number
+  expiringGrants: number
+  waiting: number
+}): AttentionChip[] {
+  const chips: AttentionChip[] = [
+    {
+      tone: "act-now",
+      label: "Act now",
+      value: counts.overdueReturns + counts.activeHolds,
+    },
+    {
+      tone: "needs-you",
+      label: "Needs you",
+      value: counts.actions + counts.expiringGrants,
+    },
+    { tone: "waiting", label: "Waiting on others", value: counts.waiting },
+  ]
+  return chips.filter((chip) => chip.value > 0)
+}
+
 /**
  * Sponsors see the events they sponsor alongside their own; one entry per event, soonest first,
  * next five upcoming (not terminal, starting at or after now).

@@ -3,6 +3,8 @@ import { BellIcon, ClapperboardIcon, ClockIcon, LogOutIcon } from "lucide-react"
 import { Navigate, NavLink, Outlet, useLocation } from "react-router"
 import { toast } from "sonner"
 import { useNavAllowed } from "@/components/common"
+import { GlobalSearch } from "@/components/GlobalSearch"
+import { useNow } from "@/components/staff/shared"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -19,14 +21,12 @@ import { Separator } from "@/components/ui/separator"
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
@@ -50,6 +50,7 @@ const ACTIVE_NAV =
   "data-[active=true]:bg-sidebar-primary data-[active=true]:text-sidebar-primary-foreground data-[active=true]:font-bold"
 
 export function AppLayout() {
+  const me = useMe()
   const user = useUser()
   const allowed = useNavAllowed()
   const { pathname } = useLocation()
@@ -117,32 +118,21 @@ export function AppLayout() {
             )
           })}
         </SidebarContent>
-        <SidebarFooter>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                asChild
-                isActive={isActive("/inbox")}
-                className={ACTIVE_NAV}
-              >
-                <NavLink to="/inbox">
-                  <BellIcon />
-                  <span>Inbox</span>
-                </NavLink>
-              </SidebarMenuButton>
-              {!!unread.data?.count && (
-                <SidebarMenuBadge>{unread.data.count}</SidebarMenuBadge>
-              )}
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
       </Sidebar>
       <SidebarInset className="min-w-0">
         <header className="flex h-14 min-w-0 items-center gap-2 border-b bg-card px-2 sm:px-4">
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-6" />
-          <div className="flex-1" />
+          {/* In dev mode the clock button already shows the (possibly time-travelled) date. */}
+          {!me.data?.devMode && <TopBarDate />}
+          <div className="flex min-w-0 flex-1 justify-center px-2">
+            <GlobalSearch />
+          </div>
           <DevClock />
+          <InboxButton
+            count={unread.data?.count ?? 0}
+            active={isActive("/inbox")}
+          />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="h-10 gap-2">
@@ -181,6 +171,50 @@ export function AppLayout() {
         </main>
       </SidebarInset>
     </SidebarProvider>
+  )
+}
+
+/** Today's date in the campus time zone, shown in the top bar now that the dashboard banner no longer carries it. */
+function TopBarDate() {
+  const tz = useTz()
+  const now = useNow()
+  const label = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    timeZone: tz,
+  }).format(new Date(now))
+  return (
+    <p className="hidden text-sm font-medium whitespace-nowrap md:block">
+      {label}
+    </p>
+  )
+}
+
+/** Inbox in the top bar (it used to sit at the bottom of the sidebar), with the unread count on the bell. */
+function InboxButton({ count, active }: { count: number; active: boolean }) {
+  return (
+    <Button
+      asChild
+      variant={active ? "default" : "ghost"}
+      size="icon"
+      className="relative"
+    >
+      <NavLink
+        to="/inbox"
+        aria-label={count ? `Inbox, ${count} unread` : "Inbox, nothing unread"}
+      >
+        <BellIcon />
+        {count > 0 && (
+          <span
+            aria-hidden="true"
+            className="absolute -top-1 -right-1 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[0.6875rem] font-bold text-primary-foreground ring-2 ring-card"
+          >
+            {count}
+          </span>
+        )}
+      </NavLink>
+    </Button>
   )
 }
 

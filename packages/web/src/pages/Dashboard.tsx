@@ -1,5 +1,6 @@
+import { attentionChips } from "@/pages/dashboard-data"
 import {
-  DashboardHero,
+  DashboardHeader,
   ExpiringAccessBanners,
   HoldBanners,
   NeedsActionCard,
@@ -15,15 +16,20 @@ export function DashboardPage() {
   const d = useDashboardData()
   return (
     <>
-      <DashboardHero
+      <DashboardHeader
         now={d.now}
         tz={d.tz}
         displayName={d.displayName}
+        roles={d.roles}
         level={d.access.data?.effectiveLevelToday}
         canRequest={d.canRequest}
-        upcomingCount={d.upcoming.length}
-        actionCount={d.actions.length}
-        unreadCount={d.unread.length}
+        chips={attentionChips({
+          overdueReturns: d.overdueOut,
+          activeHolds: d.activeHolds.length,
+          actions: d.actions.length,
+          expiringGrants: d.expiring.length,
+          waiting: d.waitingCount,
+        })}
       />
 
       <HoldBanners error={d.holds.error} holds={d.activeHolds} />
