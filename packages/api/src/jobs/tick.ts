@@ -1,4 +1,5 @@
 import {
+  decisionDeadlines,
   type GrantLike,
   REVIEWABLE,
   firstUncoveredDay,
@@ -26,7 +27,7 @@ import {
 import { now } from "../lib/clock.ts"
 import { eventAudience, notify } from "../lib/notify.ts"
 import { recheckEvents } from "../services/review.ts"
-import { getPolicies } from "../services/policy.ts"
+import { decisionPolicyOf, getPolicies } from "../services/policy.ts"
 import {
   type EventRow,
   addDaysIso,
@@ -182,19 +183,17 @@ async function expireDecisions(db: DB, at: string): Promise<number> {
     .from(events)
     .where(inArray(events.state, ["Submitted", "SponsorApproved"]))
     .all()) {
-    const start = await dayStartOf(db, ev)
+    // Same rule the API uses to show "expires in …", so the shown deadline is when this job acts.
+    const deadlines = decisionDeadlines(
+      ev,
+      await dayStartOf(db, ev),
+      decisionPolicyOf(p)
+    )
     const cutoffPassed =
-      start !== null &&
-      nowMs >= Date.parse(start) - p.DECISION_CUTOFF_HOURS * HOUR_MS
-    const sponsorSlaPassed =
-      ev.state === "Submitted" &&
-      ev.submittedAt !== null &&
-      nowMs - Date.parse(ev.submittedAt) >= p.SPONSOR_SLA_HOURS * HOUR_MS
-    const staffSlaPassed =
-      ev.state === "SponsorApproved" &&
-      ev.sponsorDecidedAt !== null &&
-      nowMs - Date.parse(ev.sponsorDecidedAt) >= p.STAFF_SLA_HOURS * HOUR_MS
-    if (!cutoffPassed && !sponsorSlaPassed && !staffSlaPassed) continue
+      deadlines.cutoffAt !== null && nowMs >= Date.parse(deadlines.cutoffAt)
+    const slaPassed =
+      deadlines.slaAt !== null && nowMs >= Date.parse(deadlines.slaAt)
+    if (!cutoffPassed && !slaPassed) continue
     await moveEvent(
       db,
       ev,

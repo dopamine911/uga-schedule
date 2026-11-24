@@ -1,8 +1,10 @@
 import {
   type DayInterval,
+  type DecisionPolicy,
   type EventAction,
   type SoftPolicyCode,
   can,
+  decisionDeadlines,
   editAction,
   hasHard,
   deniedStudios,
@@ -38,6 +40,7 @@ import { now } from "../lib/clock.ts"
 import { badRequest, conflict, forbidden } from "../lib/errors.ts"
 import { eventAudience, notify } from "../lib/notify.ts"
 import type { DraftInput } from "../services/booking.ts"
+import { decisionPolicyOf, getPolicies } from "../services/policy.ts"
 import { v } from "../lib/validate.ts"
 import {
   checkDraft,
@@ -323,9 +326,15 @@ async function lookupsOf(db: DB): Promise<Lookups> {
 }
 
 /** Row shape for the event list (BR-006-16). */
-async function summaryOf(db: DB, ev: EventRow, look: Lookups) {
+async function summaryOf(
+  db: DB,
+  ev: EventRow,
+  look: Lookups,
+  policy: DecisionPolicy
+) {
   const requester = look.users.get(ev.requesterId)!
   const sponsor = ev.sponsorId ? look.users.get(ev.sponsorId)! : null
+  const days = await daysOf(db, ev.id)
   return {
     id: ev.id,
     title: ev.title,
@@ -345,7 +354,7 @@ async function summaryOf(db: DB, ev: EventRow, look: Lookups) {
     sponsor: sponsor
       ? { id: sponsor.id, displayName: sponsor.displayName }
       : null,
-    days: (await daysOf(db, ev.id)).map((d) => ({
+    days: days.map((d) => ({
       day: d.day,
       startTime: d.startTime,
       endTime: d.endTime,
@@ -353,6 +362,8 @@ async function summaryOf(db: DB, ev: EventRow, look: Lookups) {
       endsAt: d.endsAt,
     })),
     nextAction: await nextActionFor(db, ev),
+    // When the request expires if nobody decides (null when not awaiting a decision). Same rule as the expiry job.
+    decideBy: decisionDeadlines(ev, days[0]?.startsAt ?? null, policy).at,
   }
 }
 
@@ -658,7 +669,8 @@ export const routes = new Hono<AppEnv>()
       if (await canViewEvent(db, user, e)) visible.push(e)
     }
     const rows = []
-    for (const e of visible) rows.push(await summaryOf(db, e, look))
+    const policy = decisionPolicyOf(await getPolicies(db))
+    for (const e of visible) rows.push(await summaryOf(db, e, look, policy))
     rows.sort((a, b) =>
       (a.days[0]?.startsAt ?? "").localeCompare(b.days[0]?.startsAt ?? "")
     )

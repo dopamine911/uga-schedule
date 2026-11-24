@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   type SubmissionContext,
   can,
+  decisionDeadlines,
   deniedStudios,
   editAction,
   effectivePermissions,
@@ -672,5 +673,98 @@ describe("permissions (F-001)", () => {
     // Removing the only studio a staff member works in leaves no access at all.
     const staffA = { roles: [staffAC.roles[0]!], denied: staffAC.denied }
     expect(can(staffA, "checkout.perform")).toBe(false)
+  })
+})
+
+describe("decisionDeadlines (BR-006-07)", () => {
+  const policy = {
+    decisionCutoffHours: 24,
+    sponsorSlaHours: 72,
+    staffSlaHours: 48,
+  }
+  const firstDay = "2026-12-10T15:00:00.000Z"
+
+  it("uses the sponsor time limit while Submitted when it comes first", () => {
+    const result = decisionDeadlines(
+      {
+        state: "Submitted",
+        submittedAt: "2026-12-01T12:00:00.000Z",
+        sponsorDecidedAt: null,
+      },
+      firstDay,
+      policy
+    )
+    expect(result.slaAt).toBe("2026-12-04T12:00:00.000Z")
+    expect(result.cutoffAt).toBe("2026-12-09T15:00:00.000Z")
+    expect(result.at).toBe("2026-12-04T12:00:00.000Z")
+  })
+
+  it("uses the cutoff before the first day when it comes before the time limit", () => {
+    const result = decisionDeadlines(
+      {
+        state: "Submitted",
+        submittedAt: "2026-12-08T12:00:00.000Z",
+        sponsorDecidedAt: null,
+      },
+      firstDay,
+      policy
+    )
+    expect(result.at).toBe("2026-12-09T15:00:00.000Z")
+  })
+
+  it("uses the staff time limit from the sponsor's approval while SponsorApproved", () => {
+    const result = decisionDeadlines(
+      {
+        state: "SponsorApproved",
+        submittedAt: "2026-12-01T12:00:00.000Z",
+        sponsorDecidedAt: "2026-12-02T09:00:00.000Z",
+      },
+      firstDay,
+      policy
+    )
+    expect(result.slaAt).toBe("2026-12-04T09:00:00.000Z")
+    expect(result.at).toBe("2026-12-04T09:00:00.000Z")
+  })
+
+  it("falls back to whichever deadline is known", () => {
+    expect(
+      decisionDeadlines(
+        { state: "Submitted", submittedAt: null, sponsorDecidedAt: null },
+        firstDay,
+        policy
+      ).at
+    ).toBe("2026-12-09T15:00:00.000Z")
+    expect(
+      decisionDeadlines(
+        {
+          state: "Submitted",
+          submittedAt: "2026-12-01T12:00:00.000Z",
+          sponsorDecidedAt: null,
+        },
+        null,
+        policy
+      ).at
+    ).toBe("2026-12-04T12:00:00.000Z")
+  })
+
+  it("is null for requests that are not waiting on a decision", () => {
+    for (const state of [
+      "Draft",
+      "Confirmed",
+      "InProgress",
+      "Closed",
+      "Rejected",
+    ] as const)
+      expect(
+        decisionDeadlines(
+          {
+            state,
+            submittedAt: "2026-12-01T12:00:00.000Z",
+            sponsorDecidedAt: null,
+          },
+          firstDay,
+          policy
+        )
+      ).toEqual({ at: null, cutoffAt: null, slaAt: null })
   })
 })

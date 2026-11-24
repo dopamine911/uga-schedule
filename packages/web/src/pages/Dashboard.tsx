@@ -1,4 +1,4 @@
-import { attentionChips } from "@/pages/dashboard-data"
+import { attentionChips, isActNow } from "@/pages/dashboard-data"
 import {
   DashboardHeader,
   ExpiringAccessBanners,
@@ -27,6 +27,8 @@ export function DashboardPage() {
         chips={attentionChips({
           overdueReturns: d.overdueOut,
           activeHolds: d.activeHolds.length,
+          actionsExpiringSoon: d.actions.filter((a) => isActNow(a, d.now))
+            .length,
           actions: d.actions.length,
           expiringGrants: d.expiring.length,
           waiting: d.waitingCount,

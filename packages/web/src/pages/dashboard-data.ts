@@ -9,6 +9,8 @@ export interface EventSummary {
   title: string
   state: EventState
   nextAction: string | null
+  /** When the request expires if nobody decides; null when it is not awaiting a decision (API, BR-006-07). */
+  decideBy: string | null
   needsReview: boolean
   days: readonly {
     day: string
@@ -56,6 +58,24 @@ export interface DashboardAction {
   action: string
   /** When the request's first session starts (UTC ISO), or null if it has no days yet. */
   startsAt: string | null
+  /** When the request expires if nobody decides (UTC ISO), or null when not awaiting a decision. */
+  decideBy: string | null
+}
+
+/** Decisions expiring within this window count as "Act now" (red) rather than "Needs you" (amber). */
+export const ACT_NOW_WINDOW_MS = 4 * 3_600_000
+
+/** The moment that makes this step urgent: its decision deadline if it has one, else its session start. */
+export function urgentAt(action: DashboardAction): string | null {
+  return action.decideBy ?? action.startsAt
+}
+
+/** Whether a step's decision deadline falls within ACT_NOW_WINDOW_MS of `now`. */
+export function isActNow(action: DashboardAction, now: number): boolean {
+  return (
+    action.decideBy !== null &&
+    Date.parse(action.decideBy) - now < ACT_NOW_WINDOW_MS
+  )
 }
 
 /** Next-action text that asks the user to do something (the rest describe waiting on others). */
@@ -127,9 +147,9 @@ function startOf(e: EventSummary): string | null {
 }
 
 /**
- * Actions for me: my own requests needing a step, sponsor approvals, and staff decisions,
- * soonest session first (the rows carry no decision deadline, so how soon the session starts is
- * the honest measure of urgency). Requests without days sort last.
+ * Actions for me: my own requests needing a step, sponsor approvals, and staff decisions, most urgent
+ * first: by decision deadline when the request is awaiting one, otherwise by session start.
+ * Requests with neither sort last.
  */
 export function buildActions(
   mine: readonly EventSummary[] | undefined,
@@ -145,6 +165,7 @@ export function buildActions(
               title: e.title,
               action: e.nextAction,
               startsAt: startOf(e),
+              decideBy: e.decideBy,
             },
           ]
         : []
@@ -156,6 +177,7 @@ export function buildActions(
         title: e.title,
         action: "Approve or reject this request",
         startsAt: startOf(e),
+        decideBy: e.decideBy,
       })),
     ...(studio ?? [])
       .filter((e) => e.state === "SponsorApproved" || e.needsReview)
@@ -166,13 +188,16 @@ export function buildActions(
           ? "Review the flagged request"
           : "Confirm or reject this request",
         startsAt: startOf(e),
+        decideBy: e.decideBy,
       })),
   ]
   return actions.sort((a, b) => {
-    if (a.startsAt === b.startsAt) return 0
-    if (a.startsAt === null) return 1
-    if (b.startsAt === null) return -1
-    return a.startsAt.localeCompare(b.startsAt)
+    const first = urgentAt(a)
+    const second = urgentAt(b)
+    if (first === second) return 0
+    if (first === null) return 1
+    if (second === null) return -1
+    return first.localeCompare(second)
   })
 }
 
@@ -196,14 +221,16 @@ export interface AttentionChip {
 
 /**
  * Header chips, most urgent first, leaving out zero counts.
- * The dashboard rows carry no deadlines, so urgency comes from the kind of item, not from time left:
- * - Act now (red): late equipment returns and holds that block new requests.
- * - Needs you (amber): decisions or steps waiting on this user, and access that is about to expire.
+ * - Act now (red): late equipment returns, holds that block new requests, and decisions that expire
+ *   within ACT_NOW_WINDOW_MS.
+ * - Needs you (amber): other decisions or steps waiting on this user, and access that is about to expire.
  * - Waiting on others (blue): the user's or sponsored requests whose next step is someone else's.
  */
 export function attentionChips(counts: {
   overdueReturns: number
   activeHolds: number
+  /** Steps waiting on this user whose decision expires within ACT_NOW_WINDOW_MS (counted once, as Act now). */
+  actionsExpiringSoon: number
   actions: number
   expiringGrants: number
   waiting: number
@@ -212,12 +239,14 @@ export function attentionChips(counts: {
     {
       tone: "act-now",
       label: "Act now",
-      value: counts.overdueReturns + counts.activeHolds,
+      value:
+        counts.overdueReturns + counts.activeHolds + counts.actionsExpiringSoon,
     },
     {
       tone: "needs-you",
       label: "Needs you",
-      value: counts.actions + counts.expiringGrants,
+      value:
+        counts.actions - counts.actionsExpiringSoon + counts.expiringGrants,
     },
     { tone: "waiting", label: "Waiting on others", value: counts.waiting },
   ]

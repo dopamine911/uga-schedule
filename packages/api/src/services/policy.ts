@@ -1,3 +1,4 @@
+import type { DecisionPolicy } from "@studio/domain"
 import type { DB } from "../db/client.ts"
 import { policies } from "../db/schema.ts"
 
@@ -27,4 +28,13 @@ export async function getPolicies(db: DB): Promise<Policies> {
     if (row.key in out) out[row.key as PolicyKey] = row.value
   }
   return out
+}
+
+/** The policy values the shared decision-deadline rule needs (domain decisionDeadlines). */
+export function decisionPolicyOf(p: Policies): DecisionPolicy {
+  return {
+    decisionCutoffHours: p.DECISION_CUTOFF_HOURS,
+    sponsorSlaHours: p.SPONSOR_SLA_HOURS,
+    staffSlaHours: p.STAFF_SLA_HOURS,
+  }
 }

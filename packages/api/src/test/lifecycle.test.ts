@@ -334,6 +334,40 @@ describe("expiry (US-006-07)", () => {
     )
     expect(codes).toContain("EVENT_EXPIRED")
   })
+
+  it("lists decideBy as exactly the moment the expiry job acts", async () => {
+    const h = await createHarness()
+    const i = await ids(h)
+    await pinNoon(h)
+    const day = dayPlus(today(), 5)
+    const alice = await h.as("alice.student")
+    const id = await createAndSubmit(alice, podcastDraft(i, day))
+
+    const listed = (await alice.get("/api/events?scope=mine")).body.find(
+      (e: { id: string }) => e.id === id
+    )
+    // Five days out, the 72 h sponsor limit comes before the 24 h cutoff, so it decides.
+    const { submittedAt } = (await alice.get(`/api/events/${id}`)).body
+    expect(listed.decideBy).toBe(
+      new Date(Date.parse(submittedAt) + 72 * HOUR).toISOString()
+    )
+
+    await setNow(
+      h,
+      new Date(Date.parse(listed.decideBy) - 60_000).toISOString()
+    )
+    await runJobs(h.db)
+    expect((await alice.get(`/api/events/${id}`)).body.state).toBe("Submitted")
+
+    await setNow(h, listed.decideBy)
+    await runJobs(h.db)
+    expect((await alice.get(`/api/events/${id}`)).body.state).toBe("Expired")
+
+    const after = (await alice.get("/api/events?scope=mine")).body.find(
+      (e: { id: string }) => e.id === id
+    )
+    expect(after.decideBy).toBeNull()
+  })
 })
 
 describe("late return, hold and submission block (US-007-03)", () => {

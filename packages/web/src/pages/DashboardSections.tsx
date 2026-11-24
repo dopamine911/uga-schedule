@@ -47,6 +47,7 @@ import {
   type CountSource,
   countOf,
   type DashboardAction,
+  isActNow,
   type EventSummary,
   type GrantRow,
   greeting,
@@ -381,6 +382,10 @@ export function NextUpCard({
   now: number
 }) {
   if (!action) return null
+  const urgent = isActNow(action, now)
+  const toneClass = urgent
+    ? "bg-destructive/10 text-destructive"
+    : "bg-warning text-warning-foreground"
   return (
     <section
       aria-labelledby="next-up-title"
@@ -389,8 +394,13 @@ export function NextUpCard({
       <div className="flex min-w-0 flex-col gap-2">
         <p className="flex items-center gap-2 text-xs font-bold tracking-[0.14em] text-muted-foreground uppercase">
           Next up
-          <span className="rounded-full bg-warning px-2 py-0.5 tracking-normal text-warning-foreground normal-case">
-            Needs you
+          <span
+            className={cn(
+              "rounded-full px-2 py-0.5 tracking-normal normal-case",
+              toneClass
+            )}
+          >
+            {urgent ? "Act now" : "Needs you"}
           </span>
         </p>
         <h2 id="next-up-title" className="text-2xl leading-tight font-medium">
@@ -408,22 +418,51 @@ export function NextUpCard({
           </Button>
         </div>
       </div>
-      {action.startsAt && (
-        <div className="flex shrink-0 flex-col gap-1 rounded-lg bg-warning px-5 py-4 text-warning-foreground md:min-w-56">
-          <span className="font-heading text-4xl leading-none font-medium">
-            {Date.parse(action.startsAt) > now
-              ? fmtRelative(action.startsAt, now).replace(/^in /, "")
-              : "Started"}
-          </span>
-          <span className="text-sm font-bold">
-            {Date.parse(action.startsAt) > now
-              ? "until the session"
-              : "the session is under way"}{" "}
-            · {fmtInstant(action.startsAt, tz)}
-          </span>
-        </div>
-      )}
+      <NextUpCountdown
+        action={action}
+        now={now}
+        tz={tz}
+        toneClass={toneClass}
+      />
     </section>
+  )
+}
+
+/**
+ * Countdown panel for Next up: to the decision deadline when the request is awaiting one (the moment it
+ * expires if nobody acts), otherwise to the session start. Nothing when neither is known.
+ */
+function NextUpCountdown({
+  action,
+  now,
+  tz,
+  toneClass,
+}: {
+  action: DashboardAction
+  now: number
+  tz: string
+  toneClass: string
+}) {
+  const target = action.decideBy ?? action.startsAt
+  if (!target) return null
+  const future = Date.parse(target) > now
+  let caption = "the session is under way"
+  if (action.decideBy) caption = future ? "until it expires" : "expired"
+  else if (future) caption = "until the session"
+  return (
+    <div
+      className={cn(
+        "flex shrink-0 flex-col gap-1 rounded-lg px-5 py-4 md:min-w-56",
+        toneClass
+      )}
+    >
+      <span className="font-heading text-4xl leading-none font-medium">
+        {future ? fmtRelative(target, now).replace(/^in /, "") : "Now"}
+      </span>
+      <span className="text-sm font-bold">
+        {caption} · {fmtInstant(target, tz)}
+      </span>
+    </div>
   )
 }
 
@@ -443,7 +482,7 @@ export function NeedsActionCard({
           <IconTitle icon={ListTodoIcon}>Also needs you</IconTitle>
         </CardTitle>
         <CardDescription>
-          Other steps that wait on you, soonest session first.
+          Other steps that wait on you, most urgent first.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -471,7 +510,10 @@ export function NeedsActionCard({
                   </Link>
                   <span className="text-sm text-muted-foreground">
                     {a.action}
-                    {a.startsAt && ` · Session ${fmtInstant(a.startsAt, tz)}`}
+                    {a.decideBy
+                      ? ` · Expires ${fmtInstant(a.decideBy, tz)}`
+                      : a.startsAt &&
+                        ` · Session ${fmtInstant(a.startsAt, tz)}`}
                   </span>
                 </span>
               </li>
