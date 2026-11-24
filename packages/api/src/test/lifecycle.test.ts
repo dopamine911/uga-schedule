@@ -1011,25 +1011,28 @@ describe("grant expiry warning (BR-002-10)", () => {
       )
       .get()!
 
-  /** Adds an FX6 (Level 3 class) to Ben's Green screen interview, so the interview needs his Level 3 grant. */
-  const interviewNeedsLevel3 = (h: Harness) => {
+  /** Removes the FX6 (Level 3) line, leaving lighting that Ben's Level 2 from FILM 201 covers. */
+  const interviewWithoutLevel3 = (h: Harness) => {
     const interview = h.db
       .select()
       .from(s.events)
       .where(eq(s.events.title, "Green screen interview"))
       .get()!
     h.db
-      .insert(s.equipmentLines)
-      .values({ eventId: interview.id, equipmentTypeId: ids(h).fx6, qty: 1 })
+      .delete(s.equipmentLines)
+      .where(
+        and(
+          eq(s.equipmentLines.eventId, interview.id),
+          eq(s.equipmentLines.equipmentTypeId, ids(h).fx6)
+        )
+      )
       .run()
   }
 
-  // Seed: Ben has Level 2 from FILM 201 and a manual Level 3 grant ending in 5 days;
-  // his Green screen interview (Studio C, lighting: Level 2) is on day 6.
+  // Seed: Ben's manual Level 3 grant ends on day 5; his Green screen interview on day 6 books an FX6 (Level 3).
   it("tells the student and the sponsor once when a request depends on a grant ending within 7 days", async () => {
     const h = createHarness()
     pinNoon()
-    interviewNeedsLevel3(h)
     const nguyen = h.db
       .select()
       .from(s.users)
@@ -1049,7 +1052,7 @@ describe("grant expiry warning (BR-002-10)", () => {
   it("says nothing when the request does not need the expiring grant", async () => {
     const h = createHarness()
     pinNoon()
-    // As seeded, Ben's Level 2 still covers the interview.
+    interviewWithoutLevel3(h)
     runJobs(h.db)
     expect(warned(h)).toEqual([])
   })
@@ -1057,7 +1060,6 @@ describe("grant expiry warning (BR-002-10)", () => {
   it("says nothing when the grant still covers the request's last day", async () => {
     const h = createHarness()
     pinNoon()
-    interviewNeedsLevel3(h)
     // valid_until is inclusive: a grant ending on the interview day covers it.
     h.db
       .update(s.levelGrants)
