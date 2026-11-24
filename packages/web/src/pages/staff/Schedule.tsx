@@ -16,6 +16,28 @@ import {
 } from "./schedule/scheduleLayout"
 import { ALL_STUDIOS, useStudioSchedule } from "./schedule/useStudioSchedule"
 
+type CalendarUnit = "month" | "week" | "day"
+
+function calendarUnit(isMonth: boolean, isMobile: boolean): CalendarUnit {
+  if (isMonth) return "month"
+  return isMobile ? "day" : "week"
+}
+
+/** The anchor day one unit earlier (direction -1) or later (+1); months land on the 1st. */
+function shiftedAnchor(
+  anchor: string,
+  direction: number,
+  unit: CalendarUnit
+): string {
+  if (unit === "month") {
+    const [year = 0, monthNumber = 1] = anchor.split("-").map(Number)
+    return new Date(Date.UTC(year, monthNumber - 1 + direction, 1))
+      .toISOString()
+      .slice(0, 10)
+  }
+  return addDaysTo(anchor, direction * (unit === "week" ? 7 : 1))
+}
+
 export function SchedulePage() {
   const tz = useTz()
   const now = useNow()
@@ -50,17 +72,9 @@ export function SchedulePage() {
     setView(next)
   }
 
-  const step = isMobile ? 1 : 7
-  const unit = isMonth ? "month" : isMobile ? "day" : "week"
-  const shift = (direction: number) => {
-    if (isMonth) {
-      const [year = 0, monthNumber = 1] = anchor.split("-").map(Number)
-      const target = new Date(Date.UTC(year, monthNumber - 1 + direction, 1))
-      setDayPick(target.toISOString().slice(0, 10))
-    } else {
-      setDayPick(addDaysTo(anchor, direction * step))
-    }
-  }
+  const unit = calendarUnit(isMonth, isMobile)
+  const shift = (direction: number) =>
+    setDayPick(shiftedAnchor(anchor, direction, unit))
 
   return (
     <div className="flex flex-col gap-6">
