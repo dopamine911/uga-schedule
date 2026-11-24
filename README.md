@@ -59,6 +59,32 @@ Lint and format configs live at the repo root and cover every package. oxlint do
 
 React Doctor also runs on every pull request and on pushes to `main` (`.github/workflows/react-doctor.yml`). It comments with new findings and never fails the check; set `blocking` in that file to gate on them.
 
+## Deploy (Vercel)
+
+`vercel.json` deploys the repo as one Vercel project with two [services](https://vercel.com/docs/services):
+
+| Service | Root           | Public paths       | Runs as                                                                |
+| ------- | -------------- | ------------------ | ---------------------------------------------------------------------- |
+| `api`   | `packages/api` | `/api/*`, `/ics/*` | Vercel Function from `src/index.ts` (`server.ts` is local-only)        |
+| `web`   | `packages/web` | everything else    | Static Vite build; unknown paths fall back to `index.html` for the SPA |
+
+The browser calls `/api` on its own origin, so no service binding is needed. Background jobs run from a Vercel Cron request to `/api/jobs/tick` once a day at 11:00 UTC (the Hobby plan allows only daily cron), not on the 30-second interval `server.ts` uses. Jobs that depend on timing run up to a day late. Stage reminders found more than an hour after they were due are skipped rather than sent, so at a daily cadence almost none are delivered. Use a per-minute schedule on the Pro plan to restore them.
+
+Project environment variables:
+
+| Variable          | Required | Purpose                                                                                         |
+| ----------------- | -------- | ----------------------------------------------------------------------------------------------- |
+| `SESSION_SECRET`  | yes      | Signs session cookies and calendar feed links                                                   |
+| `CRON_SECRET`     | yes      | Vercel Cron sends it as a bearer token; `/api/jobs/tick` rejects requests without it            |
+| `DB_FILE`         | yes      | SQLite path under `/tmp`; the function file system is read-only elsewhere, so the default fails |
+| `UPLOAD_DIR`      | yes      | Result uploads directory under `/tmp`, for the same reason                                      |
+| `PUBLIC_BASE_URL` | no       | Origin for links in notifications and feeds; defaults to the deployment URL (`VERCEL_URL`)      |
+| `CAMPUS_TZ`       | no       | Defaults to `America/New_York`                                                                  |
+
+SQLite and result uploads live on the function's local disk, which is per instance and lost on every cold start and deploy. Vercel also caps request bodies at 4.5 MB, below the 500 MB upload limit. A durable deployment needs a hosted database and object storage for uploads.
+
+Run both services locally the way Vercel does with `vercel dev --local` (set the variables above in the shell).
+
 ## v0 scope versus the specs
 
 Built: the full request → sponsor approval → staff confirmation → checkout → check-in → results flow. Also levels, course grants and CSV roster import, inventory with per-unit status, studios with opening hours and blackouts, event types with reminder/task schedules, holds, in-app notifications, ICS calendar feeds, the audit log, and dev time travel.

@@ -1,5 +1,5 @@
 import { serve } from "@hono/node-server"
-import { createApp } from "./app.ts"
+import { createApp } from "./createApp.ts"
 import { config } from "./config.ts"
 import { openDb } from "./db/client.ts"
 import { runJobs } from "./jobs/tick.ts"

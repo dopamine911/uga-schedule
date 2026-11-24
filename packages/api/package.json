@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/app.ts"
+    ".": "./src/createApp.ts"
   },
   "scripts": {
     "dev": "DEV_MODE=1 tsx watch src/server.ts",

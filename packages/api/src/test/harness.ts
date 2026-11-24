@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm"
-import { createApp } from "../app.ts"
+import { createApp } from "../createApp.ts"
 import { openDb } from "../db/client.ts"
 import { users } from "../db/schema.ts"
 import { seed } from "../db/seed.ts"
