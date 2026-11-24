@@ -1,5 +1,6 @@
 import { type LocalDate, weekdayOf } from "@studio/domain"
 import { Link } from "react-router"
+import { usePeekLink } from "@/components/EventPeek"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { addDaysTo } from "@/components/staff/shared"
@@ -261,6 +262,7 @@ function BookingLabel({
   booking: DayBooking
   showStudioName: boolean
 }) {
+  const peek = usePeekLink()
   const text = showStudioName
     ? `${booking.studioName.split(" – ")[0]} · ${booking.label}`
     : booking.label
@@ -271,7 +273,7 @@ function BookingLabel({
   if (!booking.eventId) return <span className={className}>{text}</span>
   return (
     <Link
-      to={`/events/${booking.eventId}`}
+      to={peek(booking.eventId)}
       title={text}
       className={cn(
         className,

@@ -4,6 +4,7 @@ import { useMemo } from "react"
 import { Navigate, NavLink, Outlet, useLocation } from "react-router"
 import { toast } from "sonner"
 import { useNavAllowed } from "@/components/common"
+import { EventPeek } from "@/components/EventPeek"
 import { GlobalSearch } from "@/components/GlobalSearch"
 import { useSidebarCounts } from "@/components/useSidebarCounts"
 import { useNow } from "@/components/staff/shared"
@@ -185,6 +186,8 @@ export function AppLayout() {
         </header>
         <main className="flex min-w-0 flex-1 flex-col gap-6 p-4 md:p-6">
           <Outlet />
+          {/* Quick-look panel for ?peek=<event id>, available from every page. */}
+          <EventPeek />
         </main>
       </SidebarInset>
     </SidebarProvider>

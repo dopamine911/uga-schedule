@@ -21,6 +21,7 @@ import {
   StateBadge,
 } from "@/components/common"
 import { DateTile } from "@/components/events/DateTile"
+import { usePeekLink } from "@/components/EventPeek"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
@@ -309,6 +310,7 @@ export function UpcomingEventsCard({
   isSponsor: boolean
   canRequest: boolean
 }) {
+  const peek = usePeekLink()
   return (
     <Card>
       <CardHeader>
@@ -340,7 +342,7 @@ export function UpcomingEventsCard({
                     {e.days[0] && <DateTile day={e.days[0].day} />}
                     <div className="flex min-w-0 flex-1 flex-col gap-1">
                       <Link
-                        to={`/events/${e.id}`}
+                        to={peek(e.id)}
                         className="truncate font-bold underline-offset-4 hover:underline"
                       >
                         {e.title}
@@ -381,6 +383,7 @@ export function NextUpCard({
   tz: string
   now: number
 }) {
+  const peek = usePeekLink()
   if (!action) return null
   const urgent = isActNow(action, now)
   const toneClass = urgent
@@ -405,7 +408,7 @@ export function NextUpCard({
         </p>
         <h2 id="next-up-title" className="text-2xl leading-tight font-medium">
           <Link
-            to={`/events/${action.id}`}
+            to={peek(action.id)}
             className="underline-offset-4 hover:underline"
           >
             {action.title}
@@ -475,6 +478,7 @@ export function NeedsActionCard({
   loading: boolean
   tz: string
 }) {
+  const peek = usePeekLink()
   return (
     <Card>
       <CardHeader>
@@ -503,7 +507,7 @@ export function NeedsActionCard({
                 />
                 <span className="flex min-w-0 flex-col">
                   <Link
-                    to={`/events/${a.id}`}
+                    to={peek(a.id)}
                     className="font-bold underline-offset-4 hover:underline"
                   >
                     {a.title}

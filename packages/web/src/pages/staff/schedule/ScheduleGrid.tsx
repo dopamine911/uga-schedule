@@ -1,6 +1,7 @@
 import { type LocalDate, timeOf } from "@studio/domain"
 import type { CSSProperties } from "react"
 import { Link } from "react-router"
+import { usePeekLink } from "@/components/EventPeek"
 import { Card, CardContent } from "@/components/ui/card"
 import { fmtDayShort, fmtTime } from "@/lib/format"
 import {
@@ -192,6 +193,7 @@ function BlackoutBlock({ seg, geo }: { seg: Seg; geo: Geometry }) {
 }
 
 function BusyBlock({ seg, geo }: { seg: BusySeg; geo: Geometry }) {
+  const peek = usePeekLink()
   const className = seg.turnaround
     ? "bg-muted text-muted-foreground border-border absolute inset-x-0 overflow-hidden rounded-sm border border-dashed px-1 text-xs"
     : `${busyToneClass(seg.state)} absolute inset-x-0 overflow-hidden rounded-sm px-1 text-xs`
@@ -203,7 +205,7 @@ function BusyBlock({ seg, geo }: { seg: BusySeg; geo: Geometry }) {
   if (seg.eventId)
     return (
       <Link
-        to={`/events/${seg.eventId}`}
+        to={peek(seg.eventId)}
         aria-label={aria}
         className={`${className} hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none`}
         style={style}
