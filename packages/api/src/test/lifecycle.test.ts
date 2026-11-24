@@ -1045,7 +1045,16 @@ describe("grant expiry warning (BR-002-10)", () => {
     expect(sent.map((n) => n.recipientId).sort()).toEqual(
       [ids(h).ben, nguyen.id].sort()
     )
-    expect(sent[0]!.body).toContain("Green screen interview")
+    const end = dayPlus(today(), 5)
+    const to = (id: string) => sent.find((n) => n.recipientId === id)!
+    expect(to(ids(h).ben).body).toBe(
+      `Your Level 3 – Advanced access ends on ${end}. Affected requests: Green screen interview.`
+    )
+    // The sponsor is told whose access ends, not "your access".
+    expect(to(nguyen.id)).toMatchObject({
+      subject: "Ben Student's level grant is about to expire",
+      body: `Ben Student's Level 3 – Advanced access ends on ${end}. Affected requests you sponsor: Green screen interview.`,
+    })
     expect(bensManualGrant(h).expiryWarnedAt).not.toBeNull()
   })
 
