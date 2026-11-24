@@ -102,7 +102,10 @@ function itemIdOfKey(packageId: string, key: string): string | null {
   return z.uuid().safeParse(itemId).success ? itemId : null
 }
 
-/** Who may view a package (BR-008-05): studio staff, EM, admin; the requester while collecting if allowed to upload. */
+/**
+ * Who may view a package (BR-008-05): studio staff, EM, admin; while collecting, the requester if allowed to upload
+ * and the sponsor if their sign-off is required (BR-008-06).
+ */
 async function canViewPackage(
   db: DB,
   user: SessionUser,
@@ -111,8 +114,13 @@ async function canViewPackage(
 ): Promise<boolean> {
   if (can(user, "results.view", { studioId: ev.studioId })) return true
   const requester = ev.requesterId === user.id
-  if (pkg.status === "collecting")
-    return requester && (await typeOf(db, ev.eventTypeId)).requesterCanUpload
+  if (pkg.status === "collecting") {
+    const type = await typeOf(db, ev.eventTypeId)
+    return (
+      (requester && type.requesterCanUpload) ||
+      (ev.sponsorId === user.id && type.requiresSponsorSignoff)
+    )
+  }
   return (
     requester ||
     ev.sponsorId === user.id ||

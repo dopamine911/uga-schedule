@@ -201,7 +201,8 @@ export async function seed(db: DB): Promise<void> {
     await enroll(film101!.id, l1!.id, alice!.id)
     await enroll(film201!.id, l2!.id, ben!.id)
     await enroll(film301!.id, l3!.id, chloe!.id)
-    // Manual grant expiring soon, to demo BR-002-10.
+    // Manual Level 3 grant ending the day before Ben's Green screen interview, which books a
+    // Level 3 FX6: the first job run sends GRANT_EXPIRING to Ben and his sponsor (BR-002-10).
     await tx
       .insert(s.levelGrants)
       .values({
@@ -479,6 +480,8 @@ export async function seed(db: DB): Promise<void> {
       [
         { equipmentTypeId: aputure.id, qty: 2 },
         { equipmentTypeId: cstand.id, qty: 2 },
+        // Level 3 class: depends on Ben's expiring manual grant (BR-002-10 demo).
+        { equipmentTypeId: fx6.id, qty: 1 },
       ]
     )
     const thesisEvent = await mkEvent(

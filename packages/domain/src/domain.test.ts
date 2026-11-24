@@ -51,6 +51,14 @@ describe("levels (F-002)", () => {
     expect(eventLevel([l3], ["2027-05-14", "2027-05-15", "2027-05-16"])).toBe(0)
   })
 
+  it("counts a grant on its first and last day, and not a day outside (F-002 §4)", () => {
+    expect(effectiveLevel([course], "2027-01-19")).toBe(0)
+    expect(effectiveLevel([course], "2027-01-20")).toBe(1)
+    expect(effectiveLevel([course], "2027-05-15")).toBe(1)
+    expect(effectiveLevel([course], "2027-05-16")).toBe(0)
+    expect(eventLevel([course], ["2027-05-14", "2027-05-15"])).toBe(1)
+  })
+
   it("treats revocation as effective from the revocation day", () => {
     const g = { ...course, revokedOn: "2027-03-03" }
     expect(effectiveLevel([g], "2027-03-02")).toBe(1)
@@ -276,6 +284,207 @@ describe("validateSubmission (F-006 §5)", () => {
       baseCtx({ requesterWeeklyHours: { "2027-W14": 8 } })
     )
     expect(issues.map((i) => i.code)).toEqual(["WEEKLY_HOURS"])
+  })
+})
+
+/** One equipment line that is bookable on the base request unless a field is overridden. */
+const line = (o: Partial<SubmissionContext["lines"][number]> = {}) => ({
+  equipmentTypeId: "sm58",
+  qty: 1,
+  typeName: "Shure SM58",
+  typeActive: true,
+  classMinLevelRank: 1,
+  classMinLevelName: "Level 1",
+  maxPerEvent: null,
+  availableQty: 5,
+  ...o,
+})
+
+// Every rule in F-006 §5 / BR-006-05, one row each. Each row changes one thing on the otherwise valid
+// base request and pins the exact issues it raises: dropping a rule, raising it as the wrong severity
+// (soft rules can be justified, hard ones can't), or a rule firing when it shouldn't all fail a row.
+describe("validateSubmission rule table (F-006 §5)", () => {
+  const H = "hard" as const
+  const S = "soft" as const
+  it.each<{
+    rule: string
+    ctx: Partial<SubmissionContext>
+    expected: [string, "hard" | "soft"][]
+  }>([
+    { rule: "no days", ctx: { days: [] }, expected: [["NO_DAYS", H]] },
+    {
+      rule: "end before start",
+      ctx: {
+        days: [{ day: "2027-04-06", startTime: "13:00", endTime: "10:00" }],
+      },
+      expected: [["DAY_INVALID", H]],
+    },
+    {
+      rule: "starts in the past",
+      ctx: {
+        days: [{ day: "2027-03-31", startTime: "10:00", endTime: "11:00" }],
+      },
+      expected: [
+        ["IN_PAST", H],
+        ["DECISION_CUTOFF", H],
+      ],
+    },
+    {
+      rule: "event type retired",
+      ctx: { eventType: { ...baseCtx().eventType, active: false } },
+      expected: [["TYPE_INACTIVE", H]],
+    },
+    {
+      rule: "studio not allowed for the event type",
+      ctx: {
+        eventType: { ...baseCtx().eventType, allowedStudioIds: ["B"] },
+      },
+      expected: [["TYPE_STUDIO_NOT_ALLOWED", H]],
+    },
+    {
+      rule: "more days than the event type allows",
+      ctx: {
+        eventType: { ...baseCtx().eventType, maxDays: 1 },
+        days: [
+          { day: "2027-04-06", startTime: "10:00", endTime: "12:00" },
+          { day: "2027-04-07", startTime: "10:00", endTime: "12:00" },
+        ],
+      },
+      expected: [["TYPE_MAX_DAYS", H]],
+    },
+    {
+      rule: "longer day than the event type allows",
+      ctx: { eventType: { ...baseCtx().eventType, maxHoursPerDay: 2 } },
+      expected: [["TYPE_MAX_HOURS", H]],
+    },
+    {
+      rule: "booked further ahead than the advance window",
+      ctx: {
+        days: [{ day: "2027-06-15", startTime: "10:00", endTime: "13:00" }],
+      },
+      expected: [["ADVANCE", S]],
+    },
+    {
+      rule: "one open request over the cap",
+      ctx: { requesterOpenEvents: 3 },
+      expected: [["OPEN_CAP", S]],
+    },
+    {
+      rule: "at the open-request cap",
+      ctx: { requesterOpenEvents: 2 },
+      expected: [],
+    },
+    {
+      rule: "studio closed for bookings",
+      ctx: { studio: { ...baseCtx().studio, active: false } },
+      expected: [["STUDIO_INACTIVE", H]],
+    },
+    {
+      rule: "times off the studio's slot grid",
+      ctx: {
+        days: [{ day: "2027-04-06", startTime: "10:15", endTime: "12:15" }],
+      },
+      expected: [["SLOT_GRANULARITY", H]],
+    },
+    {
+      rule: "starts before opening",
+      ctx: {
+        days: [{ day: "2027-04-06", startTime: "07:00", endTime: "09:00" }],
+      },
+      expected: [["OUTSIDE_HOURS", H]],
+    },
+    {
+      rule: "studio closed that weekday",
+      ctx: {
+        studio: {
+          ...baseCtx().studio,
+          // 2027-04-06 is a Tuesday (weekday 1); open every other day.
+          openingHours: [0, 2, 3, 4, 5, 6].map((weekday) => ({
+            weekday,
+            opens: "08:00",
+            closes: "22:00",
+          })),
+        },
+      },
+      expected: [["OUTSIDE_HOURS", H]],
+    },
+    {
+      rule: "overlaps a blackout",
+      ctx: {
+        studio: {
+          ...baseCtx().studio,
+          blackouts: [
+            {
+              start: localToUtc("2027-04-06", "11:00", TZ),
+              end: localToUtc("2027-04-06", "12:00", TZ),
+            },
+          ],
+        },
+      },
+      expected: [["BLACKOUT", H]],
+    },
+    {
+      rule: "studio needs a higher level",
+      ctx: {
+        studio: {
+          ...baseCtx().studio,
+          minLevelRank: 3,
+          minLevelName: "Level 3",
+        },
+      },
+      expected: [["LEVEL_STUDIO", H]],
+    },
+    {
+      rule: "studio level lapses before the last day",
+      ctx: {
+        grants: [
+          {
+            levelRank: 2,
+            validFrom: "2027-01-01",
+            validUntil: "2027-04-06",
+            revokedOn: null,
+          },
+        ],
+        days: [
+          { day: "2027-04-06", startTime: "10:00", endTime: "12:00" },
+          { day: "2027-04-07", startTime: "10:00", endTime: "12:00" },
+        ],
+      },
+      expected: [["LEVEL_STUDIO", H]],
+    },
+    {
+      rule: "equipment type retired",
+      ctx: { lines: [line({ typeActive: false })] },
+      expected: [["EQUIPMENT_INACTIVE", H]],
+    },
+    {
+      rule: "more of an item than the per-event limit",
+      ctx: { lines: [line({ qty: 3, maxPerEvent: 2 })] },
+      expected: [["MAX_PER_EVENT", S]],
+    },
+    {
+      rule: "exactly the per-event limit",
+      ctx: { lines: [line({ qty: 2, maxPerEvent: 2 })] },
+      expected: [],
+    },
+    {
+      rule: "no sponsor",
+      ctx: { sponsor: null },
+      expected: [["SPONSOR_REQUIRED", H]],
+    },
+    {
+      rule: "sponsor account disabled",
+      ctx: { sponsor: { id: "prof", active: false, isSponsor: true } },
+      expected: [["SPONSOR_INVALID", H]],
+    },
+    {
+      rule: "sponsor lacks the Sponsor role",
+      ctx: { sponsor: { id: "prof", active: true, isSponsor: false } },
+      expected: [["SPONSOR_INVALID", H]],
+    },
+  ])("$rule", ({ ctx, expected }) => {
+    const issues = validateSubmission(baseCtx(ctx))
+    expect(issues.map((i) => [i.code, i.severity])).toEqual(expected)
   })
 })
 

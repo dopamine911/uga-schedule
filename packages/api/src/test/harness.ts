@@ -12,8 +12,9 @@ import { resetClock } from "../lib/clock.ts"
 export async function createHarness() {
   const db = await openDb(":memory:")
   await migrateDb(db)
-  await seed(db)
+  // Before seeding: seed dates derive from now(), which still carries the previous test's offset.
   await resetClock(db)
+  await seed(db)
   const app = createApp(db)
 
   async function as(emailPrefix: string) {

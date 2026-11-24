@@ -21,6 +21,7 @@ import {
   resultPackages,
   stageInstances,
   studios,
+  users,
 } from "../db/schema.ts"
 import { now } from "../lib/clock.ts"
 import { eventAudience, notify } from "../lib/notify.ts"
@@ -440,6 +441,7 @@ async function clearExpiredLateHolds(db: DB, at: string): Promise<number> {
 interface GrantRow extends GrantLike {
   id: string
   userId: string
+  levelName: string
   expiryWarnedAt: string | null
 }
 
@@ -449,6 +451,7 @@ async function allGrants(db: DB): Promise<GrantRow[]> {
       id: levelGrants.id,
       userId: levelGrants.userId,
       levelRank: levels.rank,
+      levelName: levels.name,
       validFrom: levelGrants.validFrom,
       validUntil: levelGrants.validUntil,
       revokedOn: levelGrants.revokedOn,
@@ -528,16 +531,34 @@ async function warnExpiringGrants(db: DB, at: string): Promise<number> {
     if (g.validUntil < today || g.validUntil > horizon) continue
     const affected = await eventsLosingEligibility(db, g)
     if (affected.length === 0) continue
-    const to = new Set<string>([g.userId])
-    for (const ev of affected) if (ev.sponsorId) to.add(ev.sponsorId)
+    const titles = (evs: typeof affected) => evs.map((e) => e.title).join(", ")
     await notify(db, {
       code: "GRANT_EXPIRING",
-      to: [...to],
+      to: [g.userId],
       eventId: affected[0]!.id,
       subject: "A level grant is about to expire",
-      body: `Your access ends on ${g.validUntil}. Affected requests: ${affected.map((e) => e.title).join(", ")}.`,
+      body: `Your ${g.levelName} access ends on ${g.validUntil}. Affected requests: ${titles(affected)}.`,
       key: `GRANT_EXPIRING:${g.id}`,
     })
+    // Each sponsor hears about the student's grant and only the requests they sponsor.
+    const student = (await db
+      .select({ name: users.displayName })
+      .from(users)
+      .where(eq(users.id, g.userId))
+      .get())!.name
+    const bySponsor = new Map<string, typeof affected>()
+    for (const e of affected)
+      if (e.sponsorId && e.sponsorId !== g.userId)
+        bySponsor.set(e.sponsorId, [...(bySponsor.get(e.sponsorId) ?? []), e])
+    for (const [sponsorId, evs] of bySponsor)
+      await notify(db, {
+        code: "GRANT_EXPIRING",
+        to: [sponsorId],
+        eventId: evs[0]!.id,
+        subject: `${student}'s level grant is about to expire`,
+        body: `${student}'s ${g.levelName} access ends on ${g.validUntil}. Affected requests you sponsor: ${titles(evs)}.`,
+        key: `GRANT_EXPIRING:${g.id}`,
+      })
     await db
       .update(levelGrants)
       .set({ expiryWarnedAt: at })
