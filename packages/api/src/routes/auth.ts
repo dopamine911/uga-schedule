@@ -20,16 +20,16 @@ export const routes = new Hono<AppEnv>()
   .get("/me", (c) =>
     c.json({ user: c.var.user, devMode: config.devMode, tz: config.tz })
   )
-  .get("/dev-users", (c) => {
+  .get("/dev-users", async (c) => {
     if (!config.devMode) throw forbidden()
     const db = c.var.db
-    const rows = db
+    const rows = await db
       .select()
       .from(users)
       .where(eq(users.status, "active"))
       .orderBy(asc(users.displayName))
       .all()
-    const roles = db.select().from(roleAssignments).all()
+    const roles = await db.select().from(roleAssignments).all()
     return c.json(
       rows.map((u) => ({
         id: u.id,
@@ -47,7 +47,7 @@ export const routes = new Hono<AppEnv>()
     async (c) => {
       if (!config.devMode) throw forbidden()
       const { userId } = c.req.valid("json")
-      const user = loadSessionUser(c.var.db, userId)
+      const user = await loadSessionUser(c.var.db, userId)
       if (!user) throw notFound("User")
       await startSession(c, user.id)
       return c.json({ user })

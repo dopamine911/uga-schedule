@@ -3,7 +3,7 @@ import { createHarness } from "./harness.ts"
 
 describe("user administration (F-001)", () => {
   it("creates a pre-provisioned user with roles, and rejects a duplicate email", async () => {
-    const h = createHarness()
+    const h = await createHarness()
     const ada = await h.as("ada.admin")
     const studios = await ada.get("/api/studios")
     const studioA = studios.body.find((s: { name: string }) =>
@@ -48,7 +48,7 @@ describe("user administration (F-001)", () => {
   })
 
   it("rejects studio staff without a studio and non-admins creating users", async () => {
-    const h = createHarness()
+    const h = await createHarness()
     const ada = await h.as("ada.admin")
     const bad = await ada.post("/api/users", {
       displayName: "No Studio",
@@ -73,7 +73,7 @@ describe("user administration (F-001)", () => {
   })
 
   it("edits a profile and keeps emails unique", async () => {
-    const h = createHarness()
+    const h = await createHarness()
     const ada = await h.as("ada.admin")
     const dan = (await ada.get("/api/users?q=dan.student")).body[0]
     const ok = await ada.put(`/api/users/${dan.id}/profile`, {
@@ -97,7 +97,7 @@ describe("user administration (F-001)", () => {
 
 describe("per-user permission removal (BR-001-14)", () => {
   it("removes one permission from a staff member, enforced server-side, and restores it", async () => {
-    const h = createHarness()
+    const h = await createHarness()
     const ada = await h.as("ada.admin")
     const samId = (await ada.get("/api/users?q=sam.staff")).body[0].id
     const episode = (await ada.get("/api/events?scope=all")).body.find(
@@ -142,7 +142,7 @@ describe("per-user permission removal (BR-001-14)", () => {
   })
 
   it("won't let an admin lock themselves or the last admin out of user management", async () => {
-    const h = createHarness()
+    const h = await createHarness()
     const ada = await h.as("ada.admin")
     const adaId = (await ada.get("/api/users?q=ada.admin")).body[0].id
     expect(
@@ -166,7 +166,7 @@ describe("per-user permission removal (BR-001-14)", () => {
 
 describe("per-studio permission removal (BR-001-15)", () => {
   it("blocks one studio for a staff member who works in two, and only that studio", async () => {
-    const h = createHarness()
+    const h = await createHarness()
     const ada = await h.as("ada.admin")
     const samId = (await ada.get("/api/users?q=sam.staff")).body[0].id
     const studios = (await ada.get("/api/studios")).body as {
@@ -235,7 +235,7 @@ describe("per-studio permission removal (BR-001-15)", () => {
   })
 
   it("blocks one studio for an 'all studios' role, in lists as well as single records", async () => {
-    const h = createHarness()
+    const h = await createHarness()
     const ada = await h.as("ada.admin")
     const eliId = (await ada.get("/api/users?q=eli.manager")).body[0].id
     const studioB = (

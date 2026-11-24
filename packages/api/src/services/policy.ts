@@ -21,9 +21,9 @@ export const POLICY_DEFAULTS = {
 export type PolicyKey = keyof typeof POLICY_DEFAULTS
 export type Policies = Record<PolicyKey, number>
 
-export function getPolicies(db: DB): Policies {
+export async function getPolicies(db: DB): Promise<Policies> {
   const out: Policies = { ...POLICY_DEFAULTS }
-  for (const row of db.select().from(policies).all()) {
+  for (const row of await db.select().from(policies).all()) {
     if (row.key in out) out[row.key as PolicyKey] = row.value
   }
   return out

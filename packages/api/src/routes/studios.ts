@@ -53,21 +53,22 @@ const MAX_SCHEDULE_DAYS = 31
 type StudioRow = typeof studios.$inferSelect
 type LevelRow = typeof levels.$inferSelect
 
-function hoursOf(
+async function hoursOf(
   db: DB,
   studioIds: readonly string[]
-): Map<string, { weekday: number; opens: string; closes: string }[]> {
+): Promise<Map<string, { weekday: number; opens: string; closes: string }[]>> {
   const out = new Map<
     string,
     { weekday: number; opens: string; closes: string }[]
   >()
   if (studioIds.length === 0) return out
-  for (const h of db
+  const rows = await db
     .select()
     .from(openingHours)
     .where(inArray(openingHours.studioId, [...studioIds]))
     .orderBy(asc(openingHours.weekday), asc(openingHours.opens))
-    .all()) {
+    .all()
+  for (const h of rows) {
     const list = out.get(h.studioId) ?? []
     list.push({ weekday: h.weekday, opens: h.opens, closes: h.closes })
     out.set(h.studioId, list)
@@ -75,13 +76,13 @@ function hoursOf(
   return out
 }
 
-function staffOf(
+async function staffOf(
   db: DB,
   studioIds: readonly string[]
-): Map<string, { id: string; displayName: string }[]> {
+): Promise<Map<string, { id: string; displayName: string }[]>> {
   const out = new Map<string, { id: string; displayName: string }[]>()
   if (studioIds.length === 0) return out
-  for (const r of db
+  const rows = await db
     .select({
       studioId: roleAssignments.studioId,
       id: users.id,
@@ -97,7 +98,8 @@ function staffOf(
       )
     )
     .orderBy(asc(users.displayName))
-    .all()) {
+    .all()
+  for (const r of rows) {
     if (!r.studioId) continue
     const list = out.get(r.studioId) ?? []
     list.push({ id: r.id, displayName: r.displayName })
@@ -117,9 +119,14 @@ function blackoutView(b: typeof blackouts.$inferSelect) {
 }
 
 /** Studios with the caller's eligibility; students and sponsors see active studios only (F-004 §4). */
-function loadStudios(db: DB, userId: string, staff: boolean, id?: string) {
+async function loadStudios(
+  db: DB,
+  userId: string,
+  staff: boolean,
+  id?: string
+) {
   const day = today()
-  const rows = db
+  const rows = await db
     .select({ s: studios, level: levels })
     .from(studios)
     .innerJoin(levels, eq(levels.id, studios.minLevelId))
@@ -131,10 +138,10 @@ function loadStudios(db: DB, userId: string, staff: boolean, id?: string) {
     )
     .orderBy(asc(studios.name))
     .all()
-  const rank = effectiveLevel(grantsFor(db, userId), day)
+  const rank = effectiveLevel(await grantsFor(db, userId), day)
   const ids = rows.map((r) => r.s.id)
-  const hours = hoursOf(db, ids)
-  const staffMap = staffOf(db, ids)
+  const hours = await hoursOf(db, ids)
+  const staffMap = await staffOf(db, ids)
   return rows.map((r) => ({
     id: r.s.id,
     name: r.s.name,
@@ -150,27 +157,31 @@ function loadStudios(db: DB, userId: string, staff: boolean, id?: string) {
   }))
 }
 
-function studioOf(db: DB, id: string): StudioRow {
-  const s = db.select().from(studios).where(eq(studios.id, id)).get()
+async function studioOf(db: DB, id: string): Promise<StudioRow> {
+  const s = await db.select().from(studios).where(eq(studios.id, id)).get()
   if (!s) throw notFound("Studio")
   return s
 }
 
-function levelOf(db: DB, id: string): LevelRow {
-  const l = db.select().from(levels).where(eq(levels.id, id)).get()
+async function levelOf(db: DB, id: string): Promise<LevelRow> {
+  const l = await db.select().from(levels).where(eq(levels.id, id)).get()
   if (!l) throw badRequest("UNKNOWN_LEVEL", "Unknown level.")
   return l
 }
 
 /** Re-checks open events of one studio (BR-004-06/07), or of every open event for a global blackout. */
-function recheckStudio(db: DB, studioId: string | null): string[] {
+async function recheckStudio(
+  db: DB,
+  studioId: string | null
+): Promise<string[]> {
   if (studioId) return recheckEvents(db, { studioId })
-  const ids = db
-    .select({ id: events.id })
-    .from(events)
-    .where(inArray(events.state, [...REVIEWABLE]))
-    .all()
-    .map((r) => r.id)
+  const ids = (
+    await db
+      .select({ id: events.id })
+      .from(events)
+      .where(inArray(events.state, [...REVIEWABLE]))
+      .all()
+  ).map((r) => r.id)
   return recheckEvents(db, { eventIds: ids })
 }
 
@@ -218,18 +229,18 @@ const blackoutBody = z
 const scheduleQuery = z.object({ from: isoDate, to: isoDate })
 
 export const routes = new Hono<AppEnv>()
-  .get("/", (c) => {
+  .get("/", async (c) => {
     const me = requireUser(c)
-    return c.json(loadStudios(c.var.db, me.id, isStaff(me)))
+    return c.json(await loadStudios(c.var.db, me.id, isStaff(me)))
   })
-  .get("/:id", (c) => {
+  .get("/:id", async (c) => {
     const me = requireUser(c)
     const db = c.var.db
     const id = c.req.param("id")
-    const [studio] = loadStudios(db, me.id, isStaff(me), id)
+    const [studio] = await loadStudios(db, me.id, isStaff(me), id)
     if (!studio) throw notFound("Studio")
-    const hours = hoursOf(db, [id]).get(id) ?? []
-    const list = db
+    const hours = (await hoursOf(db, [id])).get(id) ?? []
+    const list = await db
       .select()
       .from(blackouts)
       .where(or(eq(blackouts.studioId, id), isNull(blackouts.studioId)))
@@ -237,169 +248,163 @@ export const routes = new Hono<AppEnv>()
       .all()
     return c.json({ ...studio, hours, blackouts: list.map(blackoutView) })
   })
-  .post("/", v("json", studioBody), (c) => {
+  .post("/", v("json", studioBody), async (c) => {
     const me = authorize(c, "studio.manage")
     const db = c.var.db
     const body = c.req.valid("json")
-    levelOf(db, body.minLevelId)
-    const row = db.transaction(() => {
-      const s = db
-        .insert(studios)
-        .values({
-          name: body.name,
-          location: body.location ?? "",
-          capacityPeople: body.capacityPeople ?? 1,
-          minLevelId: body.minLevelId,
-          turnaroundMinutes: body.turnaroundMinutes ?? 30,
-          slotGranularityMinutes: body.slotGranularityMinutes ?? 30,
-          status: body.status ?? "active",
-        })
-        .returning()
-        .get()
-      audit(db, {
-        actorId: me.id,
-        action: "studio.create",
-        entityType: "studio",
-        entityId: s.id,
-        after: s,
+    await levelOf(db, body.minLevelId)
+    const s = await db
+      .insert(studios)
+      .values({
+        name: body.name,
+        location: body.location ?? "",
+        capacityPeople: body.capacityPeople ?? 1,
+        minLevelId: body.minLevelId,
+        turnaroundMinutes: body.turnaroundMinutes ?? 30,
+        slotGranularityMinutes: body.slotGranularityMinutes ?? 30,
+        status: body.status ?? "active",
       })
-      return s
+      .returning()
+      .get()
+    await audit(db, {
+      actorId: me.id,
+      action: "studio.create",
+      entityType: "studio",
+      entityId: s.id,
+      after: s,
     })
-    return c.json(row, 201)
+    return c.json(s, 201)
   })
-  .patch("/:id", v("json", studioPatch), (c) => {
+  .patch("/:id", v("json", studioPatch), async (c) => {
     const me = authorize(c, "studio.manage")
     const db = c.var.db
     const id = c.req.param("id")
-    const before = studioOf(db, id)
+    const before = await studioOf(db, id)
     const body = c.req.valid("json")
-    if (body.minLevelId) levelOf(db, body.minLevelId)
-    const flaggedEvents = db.transaction(() => {
-      const after = db
-        .update(studios)
-        .set({
-          name: body.name ?? before.name,
-          location: body.location ?? before.location,
-          capacityPeople: body.capacityPeople ?? before.capacityPeople,
-          minLevelId: body.minLevelId ?? before.minLevelId,
-          turnaroundMinutes: body.turnaroundMinutes ?? before.turnaroundMinutes,
-          slotGranularityMinutes:
-            body.slotGranularityMinutes ?? before.slotGranularityMinutes,
-          status: body.status ?? before.status,
-        })
-        .where(eq(studios.id, id))
-        .returning()
-        .get()
-      audit(db, {
-        actorId: me.id,
-        action: "studio.update",
-        entityType: "studio",
-        entityId: id,
-        before,
-        after,
+    if (body.minLevelId) await levelOf(db, body.minLevelId)
+    const after = await db
+      .update(studios)
+      .set({
+        name: body.name ?? before.name,
+        location: body.location ?? before.location,
+        capacityPeople: body.capacityPeople ?? before.capacityPeople,
+        minLevelId: body.minLevelId ?? before.minLevelId,
+        turnaroundMinutes: body.turnaroundMinutes ?? before.turnaroundMinutes,
+        slotGranularityMinutes:
+          body.slotGranularityMinutes ?? before.slotGranularityMinutes,
+        status: body.status ?? before.status,
       })
-      // BR-004-07/08: a higher min level or a deactivated studio re-checks open events.
-      const reviewable =
-        body.minLevelId !== undefined && body.minLevelId !== before.minLevelId
-      const deactivated =
-        body.status !== undefined && body.status !== before.status
-      return reviewable || deactivated
-        ? recheckEvents(db, { studioId: id })
-        : []
+      .where(eq(studios.id, id))
+      .returning()
+      .get()
+    await audit(db, {
+      actorId: me.id,
+      action: "studio.update",
+      entityType: "studio",
+      entityId: id,
+      before,
+      after,
     })
-    const [updated] = loadStudios(db, me.id, true, id)
+    // BR-004-07/08: a higher min level or a deactivated studio re-checks open events.
+    const reviewable =
+      body.minLevelId !== undefined && body.minLevelId !== before.minLevelId
+    const deactivated =
+      body.status !== undefined && body.status !== before.status
+    const flaggedEvents =
+      reviewable || deactivated ? await recheckEvents(db, { studioId: id }) : []
+    const [updated] = await loadStudios(db, me.id, true, id)
     return c.json({ ...updated, flaggedEvents })
   })
-  .put("/:id/hours", v("json", hoursBody), (c) => {
+  .put("/:id/hours", v("json", hoursBody), async (c) => {
     const me = authorize(c, "studio.manage")
     const db = c.var.db
     const id = c.req.param("id")
-    const before = hoursOf(db, [studioOf(db, id).id]).get(id) ?? []
+    const before =
+      (await hoursOf(db, [(await studioOf(db, id)).id])).get(id) ?? []
     const rows = c.req.valid("json")
-    const flaggedEvents = db.transaction(() => {
-      db.delete(openingHours).where(eq(openingHours.studioId, id)).run()
-      if (rows.length)
-        db.insert(openingHours)
-          .values(
-            rows.map((r) => ({
-              studioId: id,
-              weekday: r.weekday,
-              opens: r.opens,
-              closes: r.closes,
-            }))
-          )
-          .run()
-      audit(db, {
-        actorId: me.id,
-        action: "studio.hours",
-        entityType: "studio",
-        entityId: id,
-        before,
-        after: rows,
-      })
-      // BR-004-07: shortened hours re-check open events.
-      return recheckEvents(db, { studioId: id })
+    await db.delete(openingHours).where(eq(openingHours.studioId, id)).run()
+    if (rows.length)
+      await db
+        .insert(openingHours)
+        .values(
+          rows.map((r) => ({
+            studioId: id,
+            weekday: r.weekday,
+            opens: r.opens,
+            closes: r.closes,
+          }))
+        )
+        .run()
+    await audit(db, {
+      actorId: me.id,
+      action: "studio.hours",
+      entityType: "studio",
+      entityId: id,
+      before,
+      after: rows,
     })
-    return c.json({ hours: hoursOf(db, [id]).get(id) ?? [], flaggedEvents })
+    // BR-004-07: shortened hours re-check open events.
+    const flaggedEvents = await recheckEvents(db, { studioId: id })
+    return c.json({
+      hours: (await hoursOf(db, [id])).get(id) ?? [],
+      flaggedEvents,
+    })
   })
-  .post("/blackouts", v("json", blackoutBody), (c) => {
+  .post("/blackouts", v("json", blackoutBody), async (c) => {
     const me = authorize(c, "studio.manage")
     const db = c.var.db
     const body = c.req.valid("json")
-    if (body.studioId) studioOf(db, body.studioId)
+    if (body.studioId) await studioOf(db, body.studioId)
     const startsAt = localToUtc(body.startDay, body.startTime, config.tz)
     const endsAt = localToUtc(body.endDay, body.endTime, config.tz)
-    const result = db.transaction(() => {
-      const b = db
-        .insert(blackouts)
-        .values({
-          studioId: body.studioId,
-          startsAt,
-          endsAt,
-          reason: body.reason,
-        })
-        .returning()
-        .get()
-      audit(db, {
-        actorId: me.id,
-        action: "blackout.create",
-        entityType: "blackout",
-        entityId: b.id,
-        after: blackoutView(b),
+    const b = await db
+      .insert(blackouts)
+      .values({
+        studioId: body.studioId,
+        startsAt,
+        endsAt,
         reason: body.reason,
       })
-      // US-004-02: events over the blackout are flagged, not cancelled.
-      return { blackout: b, flaggedEvents: recheckStudio(db, body.studioId) }
+      .returning()
+      .get()
+    await audit(db, {
+      actorId: me.id,
+      action: "blackout.create",
+      entityType: "blackout",
+      entityId: b.id,
+      after: blackoutView(b),
+      reason: body.reason,
     })
-    return c.json(
-      { ...blackoutView(result.blackout), flaggedEvents: result.flaggedEvents },
-      201
-    )
+    // US-004-02: events over the blackout are flagged, not cancelled.
+    const flaggedEvents = await recheckStudio(db, body.studioId)
+    return c.json({ ...blackoutView(b), flaggedEvents }, 201)
   })
-  .delete("/blackouts/:id", (c) => {
+  .delete("/blackouts/:id", async (c) => {
     const me = authorize(c, "studio.manage")
     const db = c.var.db
     const id = c.req.param("id")
-    const b = db.select().from(blackouts).where(eq(blackouts.id, id)).get()
+    const b = await db
+      .select()
+      .from(blackouts)
+      .where(eq(blackouts.id, id))
+      .get()
     if (!b) throw notFound("Blackout")
-    db.transaction(() => {
-      db.delete(blackouts).where(eq(blackouts.id, id)).run()
-      audit(db, {
-        actorId: me.id,
-        action: "blackout.delete",
-        entityType: "blackout",
-        entityId: id,
-        before: blackoutView(b),
-        reason: b.reason,
-      })
+    await db.delete(blackouts).where(eq(blackouts.id, id)).run()
+    await audit(db, {
+      actorId: me.id,
+      action: "blackout.delete",
+      entityType: "blackout",
+      entityId: id,
+      before: blackoutView(b),
+      reason: b.reason,
     })
     return c.json({ ok: true })
   })
-  .get("/:id/schedule", v("query", scheduleQuery), (c) => {
+  .get("/:id/schedule", v("query", scheduleQuery), async (c) => {
     const me = requireUser(c)
     const db = c.var.db
     const id = c.req.param("id")
-    const studio = studioOf(db, id)
+    const studio = await studioOf(db, id)
     if (studio.status !== "active" && !isStaff(me)) throw notFound("Studio")
     const { from, to } = c.req.valid("query")
     if (to < from)
@@ -418,7 +423,7 @@ export const routes = new Hono<AppEnv>()
       )
 
     // Opening hours for each calendar day in the range.
-    const hours = hoursOf(db, [id]).get(id) ?? []
+    const hours = (await hoursOf(db, [id])).get(id) ?? []
     const days: {
       day: string
       weekday: number
@@ -437,7 +442,7 @@ export const routes = new Hono<AppEnv>()
 
     const rangeStart = localToUtc(from, "00:00", config.tz)
     const rangeEnd = localToUtc(nextDay(to), "00:00", config.tz)
-    const blackoutRows = db
+    const blackoutRows = await db
       .select()
       .from(blackouts)
       .where(
@@ -451,7 +456,7 @@ export const routes = new Hono<AppEnv>()
       .all()
 
     // Busy time: event days of events that hold this studio (F-006 §4), with turnaround.
-    const busyRows = db
+    const busyRows = await db
       .select({
         dayStart: eventDays.startsAt,
         dayEnd: eventDays.endsAt,
@@ -478,7 +483,7 @@ export const routes = new Hono<AppEnv>()
     const participants = new Map<string, Set<string>>()
     const eventIds = [...new Set(busyRows.map((b) => b.eventId))]
     if (eventIds.length)
-      for (const p of db
+      for (const p of await db
         .select({
           eventId: eventParticipants.eventId,
           userId: eventParticipants.userId,

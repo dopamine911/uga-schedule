@@ -19,37 +19,34 @@ import { v } from "../lib/validate.ts"
 const reasonBody = z.object({ reason: z.string().trim().min(1) })
 
 export const routes = new Hono<AppEnv>()
-  .post("/:id/complete", (c) => {
+  .post("/:id/complete", async (c) => {
     const user = requireUser(c)
     const db = c.var.db
-    const stage = db
+    const stage = await db
       .select()
       .from(stageInstances)
       .where(eq(stageInstances.id, c.req.param("id")))
       .get()
     if (!stage) throw notFound("Task")
-    const ev = visibleEvent(db, user, stage.eventId)
+    const ev = await visibleEvent(db, user, stage.eventId)
     if (stage.kind !== "task")
       throw conflict("NOT_A_TASK", "Only tasks can be completed.")
     if (stage.status !== "open" && stage.status !== "overdue")
       throw conflict("INVALID_STATE", `This task is ${stage.status}.`)
     if (!canCompleteStage(user, ev, stage)) throw forbidden()
-    const updated = db.transaction(() => {
-      const row = db
-        .update(stageInstances)
-        .set({ status: "done", completedBy: user.id, completedAt: now() })
-        .where(eq(stageInstances.id, stage.id))
-        .returning()
-        .get()
-      audit(db, {
-        actorId: user.id,
-        action: "stage.complete",
-        entityType: "stage_instance",
-        entityId: stage.id,
-        before: { status: stage.status },
-        after: { status: "done" },
-      })
-      return row
+    const updated = await db
+      .update(stageInstances)
+      .set({ status: "done", completedBy: user.id, completedAt: now() })
+      .where(eq(stageInstances.id, stage.id))
+      .returning()
+      .get()
+    await audit(db, {
+      actorId: user.id,
+      action: "stage.complete",
+      entityType: "stage_instance",
+      entityId: stage.id,
+      before: { status: stage.status },
+      after: { status: "done" },
     })
     return c.json({
       id: updated.id,
@@ -57,17 +54,17 @@ export const routes = new Hono<AppEnv>()
       completedAt: updated.completedAt,
     })
   })
-  .post("/:id/override", v("json", reasonBody), (c) => {
+  .post("/:id/override", v("json", reasonBody), async (c) => {
     const user = requireUser(c)
     const db = c.var.db
     const body = c.req.valid("json")
-    const stage = db
+    const stage = await db
       .select()
       .from(stageInstances)
       .where(eq(stageInstances.id, c.req.param("id")))
       .get()
     if (!stage) throw notFound("Task")
-    const ev = visibleEvent(db, user, stage.eventId)
+    const ev = await visibleEvent(db, user, stage.eventId)
     if (!allowed(user, "stage.override_block", ev.studioId)) throw forbidden()
     const blocking =
       stage.kind === "task" &&
@@ -78,28 +75,25 @@ export const routes = new Hono<AppEnv>()
         "NOT_BLOCKING",
         "Only an open task that blocks checkout can be overridden."
       )
-    const updated = db.transaction(() => {
-      const row = db
-        .update(stageInstances)
-        .set({
-          status: "overridden",
-          overrideReason: body.reason,
-          completedBy: user.id,
-          completedAt: now(),
-        })
-        .where(eq(stageInstances.id, stage.id))
-        .returning()
-        .get()
-      audit(db, {
-        actorId: user.id,
-        action: "stage.override",
-        entityType: "stage_instance",
-        entityId: stage.id,
-        before: { status: stage.status },
-        after: { status: "overridden" },
-        reason: body.reason,
+    const updated = await db
+      .update(stageInstances)
+      .set({
+        status: "overridden",
+        overrideReason: body.reason,
+        completedBy: user.id,
+        completedAt: now(),
       })
-      return row
+      .where(eq(stageInstances.id, stage.id))
+      .returning()
+      .get()
+    await audit(db, {
+      actorId: user.id,
+      action: "stage.override",
+      entityType: "stage_instance",
+      entityId: stage.id,
+      before: { status: stage.status },
+      after: { status: "overridden" },
+      reason: body.reason,
     })
     return c.json({
       id: updated.id,

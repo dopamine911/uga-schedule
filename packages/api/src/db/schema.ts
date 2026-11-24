@@ -323,6 +323,12 @@ export const policies = sqliteTable("policies", {
   value: integer("value").notNull(),
 })
 
+/** Dev-mode time travel offset (lib/clock.ts); one row, id 1. Stored so every function instance shares it. */
+export const devClock = sqliteTable("dev_clock", {
+  id: integer("id").primaryKey(),
+  offsetMs: integer("offset_ms").notNull(),
+})
+
 // ── F-006 ──────────────────────────────────────────────────────────────
 export const events = sqliteTable(
   "events",

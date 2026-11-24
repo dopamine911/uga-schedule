@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm"
-import { createApp } from "../app.ts"
-import { openDb } from "../db/client.ts"
+import { createApp } from "../createApp.ts"
+import { migrateDb, openDb } from "../db/client.ts"
 import { users } from "../db/schema.ts"
 import { seed } from "../db/seed.ts"
 import { resetClock } from "../lib/clock.ts"
@@ -9,14 +9,16 @@ import { resetClock } from "../lib/clock.ts"
  * Fresh in-memory database with demo seed data, plus a cookie-carrying client per user.
  * Seed users are addressed by email prefix, e.g. "alice.student", "sam.staff", "ada.admin".
  */
-export function createHarness() {
-  resetClock()
-  const db = openDb(":memory:")
-  seed(db)
+export async function createHarness() {
+  const db = await openDb(":memory:")
+  await migrateDb(db)
+  // Before seeding: seed dates derive from now(), which still carries the previous test's offset.
+  await resetClock(db)
+  await seed(db)
   const app = createApp(db)
 
   async function as(emailPrefix: string) {
-    const u = db
+    const u = await db
       .select()
       .from(users)
       .where(eq(users.email, `${emailPrefix}@university.edu`))

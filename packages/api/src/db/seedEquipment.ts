@@ -520,14 +520,14 @@ export const EQUIPMENT_CATALOG: CatalogClass[] = [
  * Inserts the catalog. `levelIdByRank` maps rank → level id; `dayOffset` gives "YYYY-MM-DD" n days from today.
  * Returns inserted types by name so other seed data can reference them.
  */
-export function seedEquipment(
+export async function seedEquipment(
   db: DB,
   levelIdByRank: Record<1 | 2 | 3, string>,
   dayOffset: (n: number) => string
-): Map<string, typeof s.equipmentTypes.$inferSelect> {
+): Promise<Map<string, typeof s.equipmentTypes.$inferSelect>> {
   const byName = new Map<string, typeof s.equipmentTypes.$inferSelect>()
   for (const cls of EQUIPMENT_CATALOG) {
-    const c = db
+    const c = await db
       .insert(s.equipmentClasses)
       .values({
         name: cls.name,
@@ -537,7 +537,7 @@ export function seedEquipment(
       .returning()
       .get()
     for (const t of cls.types) {
-      const type = db
+      const type = await db
         .insert(s.equipmentTypes)
         .values({
           classId: c.id,
@@ -553,7 +553,8 @@ export function seedEquipment(
       byName.set(t.name, type)
       if (t.serialized) {
         const { prefix, count, serialPrefix, exceptions = [] } = t.serialized
-        db.insert(s.equipmentUnits)
+        await db
+          .insert(s.equipmentUnits)
           .values(
             Array.from({ length: count }, (_, i) => {
               const n = i + 1
@@ -573,7 +574,8 @@ export function seedEquipment(
           )
           .run()
       } else if (t.bulk) {
-        db.insert(s.bulkStock)
+        await db
+          .insert(s.bulkStock)
           .values({
             typeId: type.id,
             qtyAvailable: t.bulk.available,

@@ -77,66 +77,70 @@ interface Labelled {
 }
 
 /** One batched lookup per entity type that has a human name. Types not listed here have no label. */
-const LABEL_LOOKUPS: Record<string, (db: DB, ids: string[]) => Labelled[]> = {
-  event: (db, ids) =>
-    db
+const LABEL_LOOKUPS: Record<
+  string,
+  (db: DB, ids: string[]) => Promise<Labelled[]>
+> = {
+  event: async (db, ids) =>
+    await db
       .select({ id: events.id, label: events.title })
       .from(events)
       .where(inArray(events.id, ids))
       .all(),
-  user: (db, ids) =>
-    db
+  user: async (db, ids) =>
+    await db
       .select({ id: users.id, label: users.displayName })
       .from(users)
       .where(inArray(users.id, ids))
       .all(),
-  studio: (db, ids) =>
-    db
+  studio: async (db, ids) =>
+    await db
       .select({ id: studios.id, label: studios.name })
       .from(studios)
       .where(inArray(studios.id, ids))
       .all(),
-  equipment_type: (db, ids) =>
-    db
+  equipment_type: async (db, ids) =>
+    await db
       .select({ id: equipmentTypes.id, label: equipmentTypes.name })
       .from(equipmentTypes)
       .where(inArray(equipmentTypes.id, ids))
       .all(),
-  equipment_class: (db, ids) =>
-    db
+  equipment_class: async (db, ids) =>
+    await db
       .select({ id: equipmentClasses.id, label: equipmentClasses.name })
       .from(equipmentClasses)
       .where(inArray(equipmentClasses.id, ids))
       .all(),
-  unit: (db, ids) =>
-    db
+  unit: async (db, ids) =>
+    await db
       .select({ id: equipmentUnits.id, label: equipmentUnits.assetTag })
       .from(equipmentUnits)
       .where(inArray(equipmentUnits.id, ids))
       .all(),
-  event_type: (db, ids) =>
-    db
+  event_type: async (db, ids) =>
+    await db
       .select({ id: eventTypes.id, label: eventTypes.name })
       .from(eventTypes)
       .where(inArray(eventTypes.id, ids))
       .all(),
-  level: (db, ids) =>
-    db
+  level: async (db, ids) =>
+    await db
       .select({ id: levels.id, label: levels.name })
       .from(levels)
       .where(inArray(levels.id, ids))
       .all(),
-  course: (db, ids) =>
-    db
-      .select({
-        id: courseOfferings.id,
-        label: courseOfferings.courseCode,
-        term: courseOfferings.term,
-      })
-      .from(courseOfferings)
-      .where(inArray(courseOfferings.id, ids))
-      .all()
-      .map((c) => ({ id: c.id, label: `${c.label} · ${c.term}` })),
+  course: async (db, ids) =>
+    (
+      await db
+        .select({
+          id: courseOfferings.id,
+          label: courseOfferings.courseCode,
+          term: courseOfferings.term,
+        })
+        .from(courseOfferings)
+        .where(inArray(courseOfferings.id, ids))
+        .all()
+    ).map((c) => ({ id: c.id, label: `${c.label} · ${c.term}` })),
 }
 
 function csvCell(value: unknown): string {
@@ -186,10 +190,10 @@ interface Scope {
 }
 
 /** Resolves entity names with one query per entity type present in `rows` (never one per row). */
-function entityLabels(
+async function entityLabels(
   db: DB,
   rows: readonly { entityType: string; entityId: string }[]
-): Map<string, string> {
+): Promise<Map<string, string>> {
   const idsByType = new Map<string, Set<string>>()
   for (const r of rows) {
     if (!(r.entityType in LABEL_LOOKUPS)) continue
@@ -199,14 +203,18 @@ function entityLabels(
   }
   const labels = new Map<string, string>()
   for (const [type, ids] of idsByType) {
-    for (const hit of LABEL_LOOKUPS[type]!(db, [...ids]))
+    for (const hit of await LABEL_LOOKUPS[type]!(db, [...ids]))
       labels.set(`${type}:${hit.id}`, hit.label)
   }
   return labels
 }
 
-function search(db: DB, filter: Scope, limit: number): AuditRow[] {
-  const rows = db
+async function search(
+  db: DB,
+  filter: Scope,
+  limit: number
+): Promise<AuditRow[]> {
+  const rows = await db
     .select({
       id: auditLog.id,
       at: auditLog.at,
@@ -241,7 +249,7 @@ function search(db: DB, filter: Scope, limit: number): AuditRow[] {
     .orderBy(desc(auditLog.at), desc(auditLog.id))
     .limit(limit)
     .all()
-  const labels = entityLabels(db, rows)
+  const labels = await entityLabels(db, rows)
   return rows.map((r) => ({
     ...r,
     entityLabel: labels.get(`${r.entityType}:${r.entityId}`) ?? null,
@@ -297,9 +305,11 @@ function scopeFor(c: Context<AppEnv>, q: z.infer<typeof filterQuery>): Scope {
 }
 
 export const routes = new Hono<AppEnv>()
-  .get("/", v("query", filterQuery), (c) => {
+  .get("/", v("query", filterQuery), async (c) => {
     const q = c.req.valid("query")
-    return c.json(search(c.var.db, scopeFor(c, q), q.limit ?? DEFAULT_LIMIT))
+    return c.json(
+      await search(c.var.db, scopeFor(c, q), q.limit ?? DEFAULT_LIMIT)
+    )
   })
   /** Entity types the caller may filter by. */
   .get("/entity-types", (c) => {
@@ -311,9 +321,13 @@ export const routes = new Hono<AppEnv>()
       : ENTITY_TYPES.filter((t) => EQUIPMENT_MANAGER_TYPES.includes(t))
     return c.json(types)
   })
-  .get("/export.csv", v("query", filterQuery), (c) => {
+  .get("/export.csv", v("query", filterQuery), async (c) => {
     const q = c.req.valid("query")
-    const rows = search(c.var.db, scopeFor(c, q), q.limit ?? DEFAULT_LIMIT)
+    const rows = await search(
+      c.var.db,
+      scopeFor(c, q),
+      q.limit ?? DEFAULT_LIMIT
+    )
     const at = now().slice(0, 10)
     return c.body(toCsv(rows), 200, {
       "content-type": "text/csv; charset=utf-8",

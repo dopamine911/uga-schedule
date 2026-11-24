@@ -1,7 +1,7 @@
 import { serve } from "@hono/node-server"
-import { createApp } from "./app.ts"
+import { createApp } from "./createApp.ts"
 import { config } from "./config.ts"
-import { openDb } from "./db/client.ts"
+import { exclusive, migrateDb, openDb } from "./db/client.ts"
 import { runJobs } from "./jobs/tick.ts"
 
 if (!config.sessionSecret) {
@@ -11,15 +11,12 @@ if (!config.sessionSecret) {
   process.exit(1)
 }
 
-const db = openDb()
+const db = await openDb()
+await migrateDb(db)
 const app = createApp(db)
 
 setInterval(() => {
-  try {
-    runJobs(db)
-  } catch (e) {
-    console.error("[jobs]", e)
-  }
+  exclusive(() => runJobs(db)).catch((e) => console.error("[jobs]", e))
 }, config.tickMs)
 
 serve({ fetch: app.fetch, port: config.port }, (info) => {

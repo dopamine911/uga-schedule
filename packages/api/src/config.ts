@@ -7,8 +7,12 @@ const devMode = process.env.DEV_MODE === "1"
 
 export const config = {
   port: Number(process.env.PORT ?? 3001),
-  /** SQLite file; ":memory:" in tests. */
-  dbFile: process.env.DB_FILE ?? resolve(dataDir, "studio.db"),
+  /** Turso (libsql://…) or a local SQLite file (file:…). Names match what the Vercel Turso integration sets. */
+  dbUrl:
+    process.env.TURSO_DATABASE_URL ?? `file:${resolve(dataDir, "studio.db")}`,
+  dbAuthToken: process.env.TURSO_AUTH_TOKEN,
+  /** Result files go to Vercel Blob when a store is connected, else to this local directory. */
+  blob: Boolean(process.env.BLOB_STORE_ID || process.env.BLOB_READ_WRITE_TOKEN),
   uploadDir: process.env.UPLOAD_DIR ?? resolve(dataDir, "uploads"),
   /** Campus time zone (overview §8). */
   tz: process.env.CAMPUS_TZ ?? "America/New_York",
@@ -20,7 +24,12 @@ export const config = {
   /** Background job interval. */
   tickMs: Number(process.env.TICK_MS ?? 30_000),
   termsVersion: "2026-11",
-  publicBaseUrl: process.env.PUBLIC_BASE_URL ?? "http://localhost:5173",
+  /** Origin for links in emails and calendar feeds. On Vercel without PUBLIC_BASE_URL, the deployment's own URL. */
+  publicBaseUrl:
+    process.env.PUBLIC_BASE_URL ??
+    (process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:5173"),
   maxUploadBytes: 500 * 1024 * 1024,
   quietHours: { start: "22:00", end: "07:00" },
 }

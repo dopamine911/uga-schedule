@@ -9,9 +9,9 @@ import { notFound } from "../lib/errors.ts"
 // F-010 in-app inbox. Every notification is an inbox row (BR-010-01).
 
 export const routes = new Hono<AppEnv>()
-  .get("/", (c) => {
+  .get("/", async (c) => {
     const user = requireUser(c)
-    const rows = c.var.db
+    const rows = await c.var.db
       .select()
       .from(notifications)
       .where(eq(notifications.recipientId, user.id))
@@ -30,9 +30,9 @@ export const routes = new Hono<AppEnv>()
       }))
     )
   })
-  .get("/unread-count", (c) => {
+  .get("/unread-count", async (c) => {
     const user = requireUser(c)
-    const rows = c.var.db
+    const rows = await c.var.db
       .select({ id: notifications.id })
       .from(notifications)
       .where(
@@ -44,9 +44,9 @@ export const routes = new Hono<AppEnv>()
       .all()
     return c.json({ count: rows.length })
   })
-  .post("/read-all", (c) => {
+  .post("/read-all", async (c) => {
     const user = requireUser(c)
-    const res = c.var.db
+    const res = await c.var.db
       .update(notifications)
       .set({ readAt: now() })
       .where(
@@ -56,12 +56,12 @@ export const routes = new Hono<AppEnv>()
         )
       )
       .run()
-    return c.json({ updated: res.changes })
+    return c.json({ updated: res.rowsAffected })
   })
-  .post("/:id/read", (c) => {
+  .post("/:id/read", async (c) => {
     const user = requireUser(c)
     const db = c.var.db
-    const n = db
+    const n = await db
       .select()
       .from(notifications)
       .where(
@@ -73,7 +73,8 @@ export const routes = new Hono<AppEnv>()
       .get()
     if (!n) throw notFound("Notification")
     const readAt = n.readAt ?? now()
-    db.update(notifications)
+    await db
+      .update(notifications)
       .set({ readAt })
       .where(eq(notifications.id, n.id))
       .run()

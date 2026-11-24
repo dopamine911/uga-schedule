@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/app.ts"
+    ".": "./src/createApp.ts"
   },
   "scripts": {
     "dev": "DEV_MODE=1 tsx watch src/server.ts",
     "start": "tsx src/server.ts",
+    "db:migrate": "tsx src/db/migrate.ts",
     "db:reset": "tsx src/db/reset.ts",
     "test": "DEV_MODE=1 vitest run",
     "typecheck": "tsc --noEmit"
@@ -16,14 +17,14 @@
   "dependencies": {
     "@hono/node-server": "^2.1.11",
     "@hono/zod-validator": "^0.9.1",
+    "@libsql/client": "^0.18.0",
     "@studio/domain": "workspace:*",
-    "better-sqlite3": "^13.2.0",
+    "@vercel/blob": "^2.9.0",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.21",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24",
     "drizzle-kit": "^0.31.11",
     "tsx": "^4.23.15",

@@ -1,9 +1,13 @@
+import { TransactionRollbackError } from "drizzle-orm"
 import { Hono } from "hono"
 import { ZodError } from "zod"
-import type { DB } from "./db/client.ts"
+import { config } from "./config.ts"
+import { type RootDB, exclusive, isLocalDb } from "./db/client.ts"
 import type { AppEnv } from "./env.ts"
 import { sessionMiddleware } from "./lib/auth.ts"
+import { loadClock } from "./lib/clock.ts"
 import { AppError, type ErrorBody } from "./lib/errors.ts"
+import { LOCAL_UPLOAD_PATH, localUploadRoutes } from "./lib/storage.ts"
 import { routes as audit } from "./routes/audit.ts"
 import { routes as auth } from "./routes/auth.ts"
 import { icsRoutes, routes as calendar } from "./routes/calendar.ts"
@@ -43,11 +47,38 @@ const api = new Hono<AppEnv>()
 /** Typed API surface for the web client (hono/client). */
 export type ApiType = typeof api
 
-export function createApp(db: DB) {
+export function createApp(db: RootDB) {
   const app = new Hono<AppEnv>()
+  // Registered first so it skips the middleware below: it streams a raw file body to disk and never touches the db.
+  app.route(LOCAL_UPLOAD_PATH.slice(0, -1), localUploadRoutes)
+
+  // A request that may write runs in one write transaction (BEGIN IMMEDIATE): its checks and writes commit together or
+  // not at all. Handlers see the transaction as c.var.db. Writing requests take turns in this process (`exclusive`),
+  // and with a local database reads do too, since it has a single connection.
+  const local = isLocalDb(config.dbUrl)
   app.use(async (c, next) => {
-    c.set("db", db)
-    await next()
+    const read = c.req.method === "GET" || c.req.method === "HEAD"
+    if (read && !local) return readRequest()
+    return exclusive(read ? readRequest : writeRequest)
+
+    async function readRequest() {
+      c.set("db", db)
+      if (config.devMode) await loadClock(db)
+      await next()
+    }
+    async function writeRequest() {
+      try {
+        await db.transaction(async (tx) => {
+          c.set("db", tx)
+          if (config.devMode) await loadClock(tx)
+          await next()
+          // The error handler already answered; undo the writes.
+          if (c.error) tx.rollback()
+        })
+      } catch (e) {
+        if (!(e instanceof TransactionRollbackError)) throw e
+      }
+    }
   })
   app.use(sessionMiddleware)
   app.route("/api", api)

@@ -74,7 +74,7 @@ export function eventAccess(
   }
 }
 
-export function grantsFor(db: DB, userId: string): GrantLike[] {
+export async function grantsFor(db: DB, userId: string): Promise<GrantLike[]> {
   return db
     .select({
       levelRank: levels.rank,
@@ -88,18 +88,21 @@ export function grantsFor(db: DB, userId: string): GrantLike[] {
     .all()
 }
 
-export function hasActiveHold(db: DB, userId: string): boolean {
-  return !!db
+export async function hasActiveHold(db: DB, userId: string): Promise<boolean> {
+  return !!(await db
     .select({ id: holds.id })
     .from(holds)
     .where(and(eq(holds.userId, userId), eq(holds.status, "active")))
-    .get()
+    .get())
 }
 
-function daysByEvent(db: DB, eventIds: string[]): Map<string, Interval[]> {
+async function daysByEvent(
+  db: DB,
+  eventIds: string[]
+): Promise<Map<string, Interval[]>> {
   const out = new Map<string, Interval[]>()
   if (eventIds.length === 0) return out
-  const rows = db
+  const rows = await db
     .select()
     .from(eventDays)
     .where(inArray(eventDays.eventId, eventIds))
@@ -117,36 +120,39 @@ function daysByEvent(db: DB, eventIds: string[]): Map<string, Interval[]> {
  * Equipment reservations (F-003 §4): lines of events holding stock, plus items still out after an event ended
  * (late returns), which block the type until returned.
  */
-export function reservationsFor(
+export async function reservationsFor(
   db: DB,
   typeIds: readonly string[],
   opts: { excludeEventId?: string; createdBefore?: string } = {}
-): Reservation[] {
+): Promise<Reservation[]> {
   if (typeIds.length === 0) return []
-  const lineRows = db
-    .select({
-      eventId: events.id,
-      createdAt: events.createdAt,
-      typeId: equipmentLines.equipmentTypeId,
-      qty: equipmentLines.qty,
-      daily: eventTypes.dailyEquipmentReturn,
-    })
-    .from(equipmentLines)
-    .innerJoin(events, eq(events.id, equipmentLines.eventId))
-    .innerJoin(eventTypes, eq(eventTypes.id, events.eventTypeId))
-    .where(
-      and(
-        inArray(equipmentLines.equipmentTypeId, [...typeIds]),
-        inArray(events.state, [...HOLDS_STOCK])
+  const lineRows = (
+    await db
+      .select({
+        eventId: events.id,
+        createdAt: events.createdAt,
+        typeId: equipmentLines.equipmentTypeId,
+        qty: equipmentLines.qty,
+        daily: eventTypes.dailyEquipmentReturn,
+      })
+      .from(equipmentLines)
+      .innerJoin(events, eq(events.id, equipmentLines.eventId))
+      .innerJoin(eventTypes, eq(eventTypes.id, events.eventTypeId))
+      .where(
+        and(
+          inArray(equipmentLines.equipmentTypeId, [...typeIds]),
+          inArray(events.state, [...HOLDS_STOCK])
+        )
       )
-    )
-    .all()
-    .filter(
-      (r) =>
-        r.eventId !== opts.excludeEventId &&
-        (opts.createdBefore === undefined || r.createdAt < opts.createdBefore)
-    )
-  const days = daysByEvent(db, [...new Set(lineRows.map((r) => r.eventId))])
+      .all()
+  ).filter(
+    (r) =>
+      r.eventId !== opts.excludeEventId &&
+      (opts.createdBefore === undefined || r.createdAt < opts.createdBefore)
+  )
+  const days = await daysByEvent(db, [
+    ...new Set(lineRows.map((r) => r.eventId)),
+  ])
   const out: Reservation[] = []
   for (const r of lineRows) {
     const d = days.get(r.eventId)
@@ -162,7 +168,7 @@ export function reservationsFor(
   }
 
   // Outstanding checkouts of events that already ended.
-  const outstanding = db
+  const outstanding = await db
     .select({
       eventId: checkoutRecords.eventId,
       typeId: checkoutRecords.equipmentTypeId,
@@ -192,21 +198,21 @@ export function reservationsFor(
 }
 
 /** Bookable capacity of a type for a window starting on `windowStartDay` (F-003 §3 table). */
-export function capacityOf(
+export async function capacityOf(
   db: DB,
   typeId: string,
   tracking: "serialized" | "bulk",
   windowStartDay: string
-): number {
+): Promise<number> {
   if (tracking === "bulk") {
-    const s = db
+    const s = await db
       .select()
       .from(bulkStock)
       .where(eq(bulkStock.typeId, typeId))
       .get()
     return s ? bulkCapacity(s) : 0
   }
-  const units = db
+  const units = await db
     .select({
       status: equipmentUnits.status,
       expectedBack: equipmentUnits.expectedBack,
@@ -218,26 +224,26 @@ export function capacityOf(
 }
 
 /** Units of each type still bookable for `window`, after other events' reservations. */
-export function availability(
+export async function availability(
   db: DB,
   typeIds: readonly string[],
   window: Interval,
   windowStartDay: string,
   opts: { excludeEventId?: string; createdBefore?: string } = {}
-): Map<string, number> {
+): Promise<Map<string, number>> {
   const types = typeIds.length
-    ? db
+    ? await db
         .select()
         .from(equipmentTypes)
         .where(inArray(equipmentTypes.id, [...typeIds]))
         .all()
     : []
-  const res = reservationsFor(db, typeIds, opts)
+  const res = await reservationsFor(db, typeIds, opts)
   const out = new Map<string, number>()
   for (const t of types) {
     out.set(
       t.id,
-      capacityOf(db, t.id, t.tracking, windowStartDay) -
+      (await capacityOf(db, t.id, t.tracking, windowStartDay)) -
         reservedQty(res, t.id, window)
     )
   }
@@ -245,37 +251,38 @@ export function availability(
 }
 
 /** Builds the submission context for a draft (F-006 §5). */
-export function buildSubmissionContext(
+export async function buildSubmissionContext(
   db: DB,
   input: DraftInput,
   opts: { excludeEventId?: string; createdBefore?: string } = {}
-): SubmissionContext {
-  const p = getPolicies(db)
-  const type = db
+): Promise<SubmissionContext> {
+  const p = await getPolicies(db)
+  const type = await db
     .select()
     .from(eventTypes)
     .where(eq(eventTypes.id, input.eventTypeId))
     .get()
   if (!type) throw badRequest("UNKNOWN_EVENT_TYPE", "Unknown event type.")
-  const studioRow = db
+  const studioRow = await db
     .select({ s: studios, level: levels })
     .from(studios)
     .innerJoin(levels, eq(levels.id, studios.minLevelId))
     .where(eq(studios.id, input.studioId))
     .get()
   if (!studioRow) throw badRequest("UNKNOWN_STUDIO", "Unknown studio.")
-  const allowedStudioIds = db
-    .select({ id: eventTypeStudios.studioId })
-    .from(eventTypeStudios)
-    .where(eq(eventTypeStudios.eventTypeId, type.id))
-    .all()
-    .map((r) => r.id)
+  const allowedStudioIds = (
+    await db
+      .select({ id: eventTypeStudios.studioId })
+      .from(eventTypeStudios)
+      .where(eq(eventTypeStudios.eventTypeId, type.id))
+      .all()
+  ).map((r) => r.id)
 
   const sponsor = input.sponsorId
-    ? db.select().from(users).where(eq(users.id, input.sponsorId)).get()
+    ? await db.select().from(users).where(eq(users.id, input.sponsorId)).get()
     : undefined
   const sponsorIsSponsor = sponsor
-    ? !!db
+    ? !!(await db
         .select({ id: roleAssignments.id })
         .from(roleAssignments)
         .where(
@@ -284,26 +291,27 @@ export function buildSubmissionContext(
             inArray(roleAssignments.role, ["SPONSOR", "ADMIN"])
           )
         )
-        .get()
+        .get())
     : false
 
   // Other events holding this studio.
-  const busyIds = db
-    .select({ id: events.id })
-    .from(events)
-    .where(
-      and(
-        eq(events.studioId, input.studioId),
-        inArray(events.state, [...HOLDS_STUDIO]),
-        opts.excludeEventId ? ne(events.id, opts.excludeEventId) : undefined
+  const busyIds = (
+    await db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.studioId, input.studioId),
+          inArray(events.state, [...HOLDS_STUDIO]),
+          opts.excludeEventId ? ne(events.id, opts.excludeEventId) : undefined
+        )
       )
-    )
-    .all()
-    .map((r) => r.id)
-  const studioBusy = [...daysByEvent(db, busyIds).values()].flat()
+      .all()
+  ).map((r) => r.id)
+  const studioBusy = [...(await daysByEvent(db, busyIds)).values()].flat()
 
   // Requester's other open events: weekly hours + open cap.
-  const mine = db
+  const mine = await db
     .select({ id: events.id, state: events.state })
     .from(events)
     .where(
@@ -316,7 +324,7 @@ export function buildSubmissionContext(
     .all()
   const weekly: Record<string, number> = {}
   if (mine.length) {
-    for (const d of db
+    for (const d of await db
       .select()
       .from(eventDays)
       .where(
@@ -336,7 +344,7 @@ export function buildSubmissionContext(
   const { intervals } = toIntervals(input.days, config.tz)
   const typeIds = [...new Set(input.lines.map((l) => l.equipmentTypeId))]
   const typeRows = typeIds.length
-    ? db
+    ? await db
         .select({ t: equipmentTypes, level: levels })
         .from(equipmentTypes)
         .innerJoin(
@@ -351,16 +359,16 @@ export function buildSubmissionContext(
     throw badRequest("UNKNOWN_EQUIPMENT", "Unknown equipment type.")
   const avail =
     intervals.length > 0
-      ? availability(
+      ? await availability(
           db,
           typeIds,
           eventWindow(intervals),
           intervals[0]!.day,
           opts
         )
-      : new Map()
+      : new Map<string, number>()
 
-  const studioBlackouts = db
+  const studioBlackouts = await db
     .select({ start: blackouts.startsAt, end: blackouts.endsAt })
     .from(blackouts)
     .where(
@@ -372,7 +380,7 @@ export function buildSubmissionContext(
     now: now(),
     tz: config.tz,
     requesterId: input.requesterId,
-    requesterHasActiveHold: hasActiveHold(db, input.requesterId),
+    requesterHasActiveHold: await hasActiveHold(db, input.requesterId),
     sponsor: sponsor
       ? {
           id: sponsor.id,
@@ -393,7 +401,7 @@ export function buildSubmissionContext(
       minLevelName: studioRow.level.name,
       turnaroundMinutes: studioRow.s.turnaroundMinutes,
       slotGranularityMinutes: studioRow.s.slotGranularityMinutes,
-      openingHours: db
+      openingHours: await db
         .select()
         .from(openingHours)
         .where(eq(openingHours.studioId, input.studioId))
@@ -402,7 +410,7 @@ export function buildSubmissionContext(
     },
     studioBusy,
     days: input.days,
-    grants: grantsFor(db, input.requesterId),
+    grants: await grantsFor(db, input.requesterId),
     lines: input.lines.map((l) => {
       const row = typeRows.find((r) => r.t.id === l.equipmentTypeId)!
       return {
@@ -429,22 +437,22 @@ export function buildSubmissionContext(
   }
 }
 
-export function checkDraft(
+export async function checkDraft(
   db: DB,
   input: DraftInput,
   excludeEventId?: string
-): Issue[] {
+): Promise<Issue[]> {
   return validateSubmission(
-    buildSubmissionContext(db, input, { excludeEventId })
+    await buildSubmissionContext(db, input, { excludeEventId })
   )
 }
 
 /** Reads an existing event back into a DraftInput. */
-export function draftOf(
+export async function draftOf(
   db: DB,
   eventId: string
-): DraftInput & { state: EventState; createdAt: string } {
-  const ev = db.select().from(events).where(eq(events.id, eventId)).get()
+): Promise<DraftInput & { state: EventState; createdAt: string }> {
+  const ev = await db.select().from(events).where(eq(events.id, eventId)).get()
   if (!ev) throw badRequest("UNKNOWN_EVENT", "Unknown event.")
   return {
     requesterId: ev.requesterId,
@@ -453,7 +461,7 @@ export function draftOf(
     studioId: ev.studioId,
     state: ev.state,
     createdAt: ev.createdAt,
-    days: db
+    days: await db
       .select({
         day: eventDays.day,
         startTime: eventDays.startTime,
@@ -463,7 +471,7 @@ export function draftOf(
       .where(eq(eventDays.eventId, eventId))
       .orderBy(eventDays.day)
       .all(),
-    lines: db
+    lines: await db
       .select({
         equipmentTypeId: equipmentLines.equipmentTypeId,
         qty: equipmentLines.qty,
@@ -474,11 +482,15 @@ export function draftOf(
   }
 }
 
-export function participantIds(db: DB, eventId: string): string[] {
-  return db
-    .select({ id: eventParticipants.userId })
-    .from(eventParticipants)
-    .where(eq(eventParticipants.eventId, eventId))
-    .all()
-    .map((r) => r.id)
+export async function participantIds(
+  db: DB,
+  eventId: string
+): Promise<string[]> {
+  return (
+    await db
+      .select({ id: eventParticipants.userId })
+      .from(eventParticipants)
+      .where(eq(eventParticipants.eventId, eventId))
+      .all()
+  ).map((r) => r.id)
 }
