@@ -2,7 +2,7 @@ import type { ApiType } from "@studio/api"
 import type { Issue } from "@studio/domain"
 import { hc } from "hono/client"
 
-/** Typed client for the Hono API (types come straight from apps/api route definitions). */
+/** Typed client for the Hono API (types come straight from packages/api route definitions). */
 export const api = hc<ApiType>("/api", { init: { credentials: "same-origin" } })
 
 /** Error thrown for non-2xx responses. `issues` is set when the API returned booking-rule issues (409). */

@@ -12,7 +12,7 @@ importers:
         specifier: ^0.9.23
         version: 0.9.23(@opentelemetry/core@2.12.0(@opentelemetry/api@1.9.1))(eslint@10.15.0(jiti@2.7.0))(react@19.3.1)
 
-  apps/api:
+  packages/api:
     dependencies:
       '@hono/node-server':
         specifier: ^2.1.11
@@ -22,7 +22,7 @@ importers:
         version: 0.9.1(hono@4.13.21)(zod@4.6.7)
       '@studio/domain':
         specifier: workspace:*
-        version: link:../../packages/domain
+        version: link:../domain
       better-sqlite3:
         specifier: ^13.2.0
         version: 13.2.0
@@ -55,7 +55,23 @@ importers:
         specifier: ^4.1.11
         version: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
-  apps/web:
+  packages/domain:
+    dependencies:
+      '@date-fns/tz':
+        specifier: ^1.5.0
+        version: 1.5.0
+      date-fns:
+        specifier: ^4.4.0
+        version: 4.4.0
+    devDependencies:
+      typescript:
+        specifier: ~6.0.2
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/web:
     dependencies:
       '@fontsource-variable/merriweather-sans':
         specifier: ^5.3.0
@@ -68,7 +84,7 @@ importers:
         version: link:../api
       '@studio/domain':
         specifier: workspace:*
-        version: link:../../packages/domain
+        version: link:../domain
       '@tailwindcss/vite':
         specifier: ^4
         version: 4.3.5(vite@8.3.8(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
@@ -166,22 +182,6 @@ importers:
       vite:
         specifier: ^8
         version: 8.3.8(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
-
-  packages/domain:
-    dependencies:
-      '@date-fns/tz':
-        specifier: ^1.5.0
-        version: 1.5.0
-      date-fns:
-        specifier: ^4.4.0
-        version: 4.4.0
-    devDependencies:
-      typescript:
-        specifier: ~6.0.2
-        version: 6.0.3
-      vitest:
-        specifier: ^4.1.11
-        version: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
 packages:
 

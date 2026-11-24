@@ -4,12 +4,16 @@ Students book university studio time and equipment. Each booking needs a sponsor
 
 ## Layout
 
-| Path | What |
-|---|---|
-| `packages/domain` | Pure TypeScript business rules: permissions, levels, availability, submission checks, event state machine, stage scheduling. Unit-tested. |
-| `apps/api` | Hono HTTP API, SQLite via Drizzle (better-sqlite3), background jobs, ICS feeds |
-| `apps/web` | React 19 + Vite + React Router + TanStack Query + shadcn/ui. Typed API client via `hono/client`. |
-| `specs` | Product specs (F-001 … F-010) |
+All code lives in one pnpm workspace under `packages/`:
+
+| Path | Package | What |
+|---|---|---|
+| `packages/domain` | `@studio/domain` | Pure TypeScript business rules: permissions, levels, availability, submission checks, event state machine, stage scheduling. Unit-tested. |
+| `packages/api` | `@studio/api` | Hono HTTP API, SQLite via Drizzle (better-sqlite3), background jobs, ICS feeds |
+| `packages/web` | `@studio/web` | React 19 + Vite + React Router + TanStack Query + shadcn/ui. Typed API client via `hono/client`. |
+| `specs` | | Product specs (F-001 … F-010) |
+
+`web` depends on `domain` and on `api`'s route types; `api` depends on `domain`; `domain` depends on nothing in the repo.
 
 ## Run
 
@@ -17,7 +21,7 @@ Requires Node 24+ and pnpm 10.
 
 ```sh
 pnpm install
-pnpm db:reset     # creates apps/api/data/studio.db with demo data
+pnpm db:reset     # creates packages/api/data/studio.db with demo data
 pnpm dev          # API on :3001, web on :5173 (proxies /api and /ics)
 ```
 
@@ -41,8 +45,8 @@ The **clock button** in the header is available in dev mode only. It moves time 
 ```sh
 pnpm test        # domain unit tests + API integration tests
 pnpm typecheck
-pnpm --filter web lint
-pnpm doctor      # React Doctor scan of apps/web (pinned in devDependencies)
+pnpm --filter @studio/web lint
+pnpm doctor      # React Doctor scan of packages/web (pinned in devDependencies)
 ```
 
 React Doctor also runs on every pull request and on pushes to `main` (`.github/workflows/react-doctor.yml`). It comments with new findings and never fails the check; set `blocking` in that file to gate on them.
