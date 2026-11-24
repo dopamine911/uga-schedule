@@ -38,7 +38,7 @@ const FLAGGED_CLASS = {
 /** Black header band: what is being picked and the chosen day(s). */
 function DatePickerHeader({ span, value }: { span: number; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-6 border-b-4 border-b-primary bg-brand-black px-4 py-3 text-white">
+    <div className="flex items-center justify-between gap-6 border-b border-b-white/20 bg-brand-black px-4 py-3 text-white">
       <span className="flex flex-col leading-tight">
         <span className="text-[0.625rem] font-bold tracking-[0.18em] text-white/70 uppercase">
           {span > 1 ? `${span} consecutive days` : "Select a date"}

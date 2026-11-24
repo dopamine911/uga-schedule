@@ -39,7 +39,7 @@ export function useNavAllowed() {
 }
 
 /**
- * Page title with the UGA "I-bar" accent: a Bulldog Red rule beside an Oswald headline, plus the page's
+ * Page title with the UGA "I-bar" accent: an Arch Black rule beside an Oswald headline, plus the page's
  * Lucide icon (the same one the sidebar uses for this route unless `icon` is given).
  */
 export function PageHeader({
@@ -89,28 +89,25 @@ export function PageHeader({
   )
 }
 
-type StateTone =
-  | "default"
-  | "info"
-  | "success"
-  | "warning"
-  | "neutral"
-  | "destructive"
-  | "outline"
+type StateTone = "info" | "success" | "warning" | "live" | "neutral" | "outline"
 
-/** Lifecycle colour: blue while waiting on people, teal once booked, red while live, neutral when done. */
+/**
+ * Lifecycle colour: blue while waiting on people, teal once booked, green while live, amber after the
+ * event, neutral when finished. Rejected, Expired and No-show are neutral too: they are outcomes nobody
+ * can act on, so they must not borrow the red that means "act now" (index.css colour jobs).
+ */
 const STATE_TONE: Record<EventState, StateTone> = {
   Draft: "outline",
   Submitted: "info",
   SponsorApproved: "info",
   Confirmed: "success",
-  InProgress: "default",
+  InProgress: "live",
   PostEvent: "warning",
   Closed: "neutral",
-  Rejected: "destructive",
-  Expired: "destructive",
+  Rejected: "neutral",
+  Expired: "neutral",
   Cancelled: "neutral",
-  NoShow: "destructive",
+  NoShow: "neutral",
 }
 
 const STATE_LABEL: Partial<Record<EventState, string>> = {
@@ -135,7 +132,7 @@ export function StateBadge({ state }: { state: EventState }) {
   )
 }
 
-/** Card or section heading with a Bulldog Red Lucide icon. */
+/** Card or section heading with a Lucide icon in the primary (Arch Black) colour. */
 export function IconTitle({
   icon: Icon,
   children,

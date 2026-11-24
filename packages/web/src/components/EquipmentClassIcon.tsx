@@ -2,7 +2,7 @@ import { createElement } from "react"
 import { equipmentClassIcon } from "@/lib/icons"
 import { cn } from "@/lib/utils"
 
-/** Red-on-tint tile with the Lucide icon for an equipment class (matched by class name). */
+/** Neutral tile with the Lucide icon for an equipment class (matched by class name). */
 export function EquipmentClassIcon({
   name,
   size = "md",

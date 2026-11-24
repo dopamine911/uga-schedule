@@ -2,7 +2,7 @@ import type { RoleCode } from "@studio/domain"
 import { Badge } from "@/components/ui/badge"
 import { ROLE_INFO } from "@/lib/roles"
 
-/** Role chip with its icon; Admin is highlighted in Bulldog Red. */
+/** Role chip with its icon; Admin is highlighted in the primary (Arch Black) colour. */
 export function RoleBadge({
   role,
   studioName,

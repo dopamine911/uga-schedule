@@ -45,7 +45,7 @@ function useUnreadCount() {
   })
 }
 
-/** Active nav item: Bulldog Red with white text (UGA red/black rule: white between red and black). */
+/** Active nav item: a lighter charcoal than the black sidebar, white bold text. Red is reserved for "act now". */
 const ACTIVE_NAV =
   "data-[active=true]:bg-sidebar-primary data-[active=true]:text-sidebar-primary-foreground data-[active=true]:font-bold"
 
@@ -68,7 +68,7 @@ export function AppLayout() {
             className="flex items-center gap-3 px-2 py-2"
             aria-label="Studio Scheduling home"
           >
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-brand-red text-white ring-2 ring-white">
               <ClapperboardIcon />
             </span>
             <span className="flex min-w-0 flex-col leading-tight">
@@ -136,7 +136,7 @@ export function AppLayout() {
         </SidebarFooter>
       </Sidebar>
       <SidebarInset className="min-w-0">
-        <header className="flex h-14 min-w-0 items-center gap-2 border-t-4 border-b border-t-primary bg-card px-2 sm:px-4">
+        <header className="flex h-14 min-w-0 items-center gap-2 border-b bg-card px-2 sm:px-4">
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-6" />
           <div className="flex-1" />

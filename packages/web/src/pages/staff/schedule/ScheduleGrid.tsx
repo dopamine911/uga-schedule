@@ -191,7 +191,7 @@ function BlackoutBlock({ seg, geo }: { seg: Seg; geo: Geometry }) {
 function BusyBlock({ seg, geo }: { seg: BusySeg; geo: Geometry }) {
   const className = seg.turnaround
     ? "bg-muted text-muted-foreground border-border absolute inset-x-0 overflow-hidden rounded-sm border border-dashed px-1 text-xs"
-    : "bg-primary text-primary-foreground absolute inset-x-0 overflow-hidden rounded-sm px-1 text-xs"
+    : "bg-success text-success-foreground absolute inset-x-0 overflow-hidden rounded-sm px-1 text-xs"
   const style = {
     top: geo.top(seg.start),
     height: geo.size(seg.start, seg.end),

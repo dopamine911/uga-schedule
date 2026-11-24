@@ -49,14 +49,14 @@ export function LoginPage() {
       <section className="relative flex flex-col justify-between overflow-hidden bg-brand-black p-8 text-white md:p-12">
         <div
           aria-hidden="true"
-          className="absolute -right-24 -bottom-24 h-[28rem] w-56 rotate-[24deg] bg-primary"
+          className="absolute -right-24 -bottom-24 h-[28rem] w-56 rotate-[24deg] bg-brand-red"
         />
         <div
           aria-hidden="true"
           className="absolute right-20 -bottom-24 h-[28rem] w-8 rotate-[24deg] bg-white/10"
         />
         <div className="relative flex items-center gap-3">
-          <span className="flex size-11 items-center justify-center rounded-md bg-primary">
+          <span className="flex size-11 items-center justify-center rounded-md bg-brand-red ring-2 ring-white">
             <ClapperboardIcon />
           </span>
           <span className="flex flex-col leading-tight">

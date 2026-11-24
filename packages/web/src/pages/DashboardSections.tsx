@@ -74,11 +74,11 @@ export function DashboardHero({
     [tz]
   )
   return (
-    <section className="relative overflow-hidden rounded-xl border-b-4 border-b-primary bg-brand-black text-white">
-      {/* Decorative red bands, kept off the text area (red/black rule) */}
+    <section className="relative overflow-hidden rounded-xl bg-brand-black text-white">
+      {/* Decorative bands, kept off the text area. White, not red: red is reserved for "act now". */}
       <div
         aria-hidden="true"
-        className="absolute -top-10 -right-16 h-56 w-40 rotate-[24deg] bg-primary opacity-90"
+        className="absolute -top-10 -right-16 h-56 w-40 rotate-[24deg] bg-white/15"
       />
       <div
         aria-hidden="true"
@@ -98,7 +98,11 @@ export function DashboardHero({
           </p>
           {canRequest && (
             <div className="pt-2">
-              <Button asChild size="lg">
+              <Button
+                asChild
+                size="lg"
+                className="bg-white text-brand-black hover:bg-white/90"
+              >
                 <Link to="/events/new">
                   <PlusIcon data-icon="inline-start" />
                   Request studio time
