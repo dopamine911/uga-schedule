@@ -60,7 +60,7 @@ import {
 
 /** Chip colours per tone: red = act now, amber = needs you, blue = waiting on someone else (index.css colour jobs). */
 const ATTENTION_CHIP_CLASS: Record<AttentionChip["tone"], string> = {
-  "act-now": "bg-destructive/10 text-destructive",
+  "act-now": "bg-critical text-critical-foreground",
   "needs-you": "bg-warning text-warning-foreground",
   waiting: "bg-info text-info-foreground",
 }
@@ -387,7 +387,7 @@ export function NextUpCard({
   if (!action) return null
   const urgent = isActNow(action, now)
   const toneClass = urgent
-    ? "bg-destructive/10 text-destructive"
+    ? "bg-critical text-critical-foreground"
     : "bg-warning text-warning-foreground"
   return (
     <section
@@ -503,7 +503,7 @@ export function NeedsActionCard({
                 {/* Amber like the header's "Needs you" chip: waiting on this user, not late (red). */}
                 <span
                   aria-hidden="true"
-                  className="mt-1.5 size-2.5 shrink-0 rounded-full bg-warning-foreground"
+                  className="mt-1.5 size-2.5 shrink-0 rounded-full bg-warning-solid"
                 />
                 <span className="flex min-w-0 flex-col">
                   <Link

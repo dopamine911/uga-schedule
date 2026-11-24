@@ -17,12 +17,15 @@
  * Colour jobs (one job per colour, so red keeps its meaning):
  *   --brand-red   Bulldog Red, identity only: the logo tile. Never on controls or status.
  *   --primary     Arch Black: buttons, selected states, emphasis. Clickable, not urgent.
- *   --destructive Red: needs action now (overdue, blocked, failed checks) and destructive actions.
+ *   --critical    Red: needs action now (overdue, expiring, blocked). Status only.
+ *   --destructive Red: destructive actions and errors (failed checks, form errors).
  *   --warning     Amber: due soon / needs you. (Was Hedges olive, which read as muddy, not as "look here".)
  *   --info        Blue: waiting on someone else.
  *   --success     Olympic teal: booked, confirmed, done well.
  *   --live        Green: happening right now.
  *   --neutral     Finished or closed outcomes (including declined and expired: nothing to act on).
+ * Each status colour has three shades (palette from the role-based redesign prototype): the tint as background,
+ * -foreground for text on that tint (WCAG AA), and -solid for dots, bars and count markers.
  * Before this, Bulldog Red was the primary colour, so every button, icon and live event looked urgent
  * and real problems (the destructive red was nearly the same shade) could not stand out.
  */
@@ -30,18 +33,26 @@
 @theme inline {
   --font-heading: "Oswald Variable", "Oswald", sans-serif;
   --font-sans: "Merriweather Sans Variable", "Merriweather Sans", sans-serif;
-  --color-info: var(--info);
-  --color-info-foreground: var(--info-foreground);
-  --color-success: var(--success);
-  --color-success-foreground: var(--success-foreground);
+  --color-critical: var(--critical);
+  --color-critical-foreground: var(--critical-foreground);
+  --color-critical-solid: var(--critical-solid);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
-  --color-neutral: var(--neutral);
-  --color-neutral-foreground: var(--neutral-foreground);
-  --color-brand-black: var(--brand-black);
-  --color-brand-red: var(--brand-red);
+  --color-warning-solid: var(--warning-solid);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-solid: var(--info-solid);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-solid: var(--success-solid);
   --color-live: var(--live);
   --color-live-foreground: var(--live-foreground);
+  --color-live-solid: var(--live-solid);
+  --color-neutral: var(--neutral);
+  --color-neutral-foreground: var(--neutral-foreground);
+  --color-neutral-solid: var(--neutral-solid);
+  --color-brand-black: var(--brand-black);
+  --color-brand-red: var(--brand-red);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -104,17 +115,25 @@
   --input: #c9ced4;
   /* Focus ring is blue so it never reads as an error. */
   --ring: #1f5fbf;
-  /* Status tints (accent palette, text passes WCAG AA on its tint) */
-  --info: #e6eef8;
-  --info-foreground: #1d3d5c;
-  --success: #dcebee;
-  --success-foreground: #004e60;
+  /* Status palette: tint, text on the tint (WCAG AA), solid for dots and markers. */
+  --critical: #fdecee;
+  --critical-foreground: #980b27;
+  --critical-solid: #c0112f;
   --warning: #fff1d1;
   --warning-foreground: #774600;
-  --neutral: #eceef1;
-  --neutral-foreground: #4a5058;
+  --warning-solid: #c77d00;
+  --info: #e7eef8;
+  --info-foreground: #1f416a;
+  --info-solid: #3c6ea8;
+  --success: #dcecef;
+  --success-foreground: #004e60;
+  --success-solid: #0a6e83;
   --live: #e0f2e6;
   --live-foreground: #16603a;
+  --live-solid: #23874f;
+  --neutral: #eceef1;
+  --neutral-foreground: #4a5058;
+  --neutral-solid: #626870;
   --chart-1: #15171a;
   --chart-2: #004e60;
   --chart-3: #b4bd00;
@@ -153,16 +172,24 @@
   --border: rgb(255 255 255 / 10%);
   --input: rgb(255 255 255 / 16%);
   --ring: #7aa7ff;
-  --info: #1b2a3a;
-  --info-foreground: #c8d8eb;
-  --success: #0b2e36;
-  --success-foreground: #8fd3e2;
+  --critical: #3a1018;
+  --critical-foreground: #ffb8c4;
+  --critical-solid: #ff4d6a;
   --warning: #3a2806;
   --warning-foreground: #ffd27a;
-  --neutral: #26241f;
-  --neutral-foreground: #d6d2c4;
+  --warning-solid: #e0a030;
+  --info: #1b2a3a;
+  --info-foreground: #c8d8eb;
+  --info-solid: #6f9bd1;
+  --success: #0b2e36;
+  --success-foreground: #8fd3e2;
+  --success-solid: #2a8ca3;
   --live: #0f3320;
   --live-foreground: #8fe0ad;
+  --live-solid: #3aa96b;
+  --neutral: #26241f;
+  --neutral-foreground: #d6d2c4;
+  --neutral-solid: #9ea2a2;
   --chart-1: #eceef0;
   --chart-2: #2a8ca3;
   --chart-3: #b4bd00;

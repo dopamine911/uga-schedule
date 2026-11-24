@@ -225,7 +225,7 @@ function ReturnRow({
     <div
       className={
         overdue.length
-          ? "flex flex-col gap-2 rounded-lg border border-destructive/50 bg-destructive/5 p-4"
+          ? "flex flex-col gap-2 rounded-lg border border-critical-solid/40 bg-critical p-4"
           : "flex flex-col gap-2 rounded-lg border p-4"
       }
     >
@@ -258,7 +258,7 @@ function ReturnRow({
                   <span
                     className={
                       Date.parse(r.dueAt) < now
-                        ? "font-medium text-destructive"
+                        ? "font-medium text-critical-foreground"
                         : "text-muted-foreground"
                     }
                   >

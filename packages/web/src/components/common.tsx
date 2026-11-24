@@ -16,7 +16,7 @@ import { ApiError } from "@/lib/api"
 import { useCan, useHasRole } from "@/lib/auth"
 import { humanize } from "@/lib/format"
 import { STATE_ICON } from "@/lib/icons"
-import { NAV, routeIcon } from "@/lib/nav"
+import { ROUTES, routeIcon } from "@/lib/nav"
 
 // Shared building blocks used by every page. Keep page-specific UI in the page files.
 
@@ -29,7 +29,7 @@ export function useNavAllowed() {
   const can = useCan()
   const hasRole = useHasRole()
   return (to: string) => {
-    const item = NAV.flatMap((g) => g.items).find((i) => i.to === to)
+    const item = ROUTES.find((i) => i.to === to)
     return (
       !!item &&
       (!item.perm || can(item.perm)) &&

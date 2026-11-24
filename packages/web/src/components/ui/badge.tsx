@@ -18,7 +18,8 @@ const badgeVariants = cva(
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",
-        // Brand status tints (index.css): pair with text that names the state, never color alone.
+        // Status tints (index.css): pair with text that names the state, never color alone.
+        critical: "bg-critical text-critical-foreground",
         info: "bg-info text-info-foreground",
         success: "bg-success text-success-foreground",
         warning: "bg-warning text-warning-foreground",

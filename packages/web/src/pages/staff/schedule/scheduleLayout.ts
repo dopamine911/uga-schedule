@@ -91,13 +91,13 @@ export function busyDotClass(state: string | undefined): string {
   switch (state) {
     case "Submitted":
     case "SponsorApproved":
-      return "bg-info-foreground"
+      return "bg-info-solid"
     case "Confirmed":
-      return "bg-success-foreground"
+      return "bg-success-solid"
     case "InProgress":
-      return "bg-live-foreground"
+      return "bg-live-solid"
     case "PostEvent":
-      return "bg-warning-foreground"
+      return "bg-warning-solid"
     default:
       return "bg-primary"
   }
