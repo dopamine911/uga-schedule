@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { BellIcon, ClapperboardIcon, ClockIcon, LogOutIcon } from "lucide-react"
+import { useMemo } from "react"
 import { Navigate, NavLink, Outlet, useLocation } from "react-router"
 import { toast } from "sonner"
 import { useNavAllowed } from "@/components/common"
@@ -178,12 +179,18 @@ export function AppLayout() {
 function TopBarDate() {
   const tz = useTz()
   const now = useNow()
-  const label = new Intl.DateTimeFormat("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    timeZone: tz,
-  }).format(new Date(now))
+  // Building an Intl formatter is costly; keep one per time zone instead of one per render.
+  const dayFormat = useMemo(
+    () =>
+      new Intl.DateTimeFormat("en-US", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        timeZone: tz,
+      }),
+    [tz]
+  )
+  const label = dayFormat.format(new Date(now))
   return (
     <p className="hidden text-sm font-medium whitespace-nowrap md:block">
       {label}
