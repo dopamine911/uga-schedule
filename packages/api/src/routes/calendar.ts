@@ -66,8 +66,12 @@ function feedOwner(userId: string, studioId: string | null) {
   )
 }
 
-function newFeed(db: DB, userId: string, studioId: string | null): FeedRow {
-  return db
+async function newFeed(
+  db: DB,
+  userId: string,
+  studioId: string | null
+): Promise<FeedRow> {
+  return await db
     .insert(icsFeeds)
     .values({ userId, studioId, token: randomBytes(32).toString("base64url") })
     .returning()
@@ -75,30 +79,37 @@ function newFeed(db: DB, userId: string, studioId: string | null): FeedRow {
 }
 
 /** The caller's current feed link, created on first use; `rotate` revokes the old link first. */
-function feedFor(
+async function feedFor(
   db: DB,
   userId: string,
   studioId: string | null,
   rotate = false
-): FeedRow {
-  return db.transaction(() => {
+): Promise<FeedRow> {
+  return db.transaction(async (tx) => {
     if (rotate)
-      db.update(icsFeeds)
+      await tx
+        .update(icsFeeds)
         .set({ revokedAt: now() })
         .where(feedOwner(userId, studioId))
         .run()
     return (
-      db.select().from(icsFeeds).where(feedOwner(userId, studioId)).get() ??
-      newFeed(db, userId, studioId)
+      (await tx
+        .select()
+        .from(icsFeeds)
+        .where(feedOwner(userId, studioId))
+        .get()) ?? (await newFeed(tx, userId, studioId))
     )
   })
 }
 
 /** Resolves a URL token to a live feed whose owner may still read it; undefined otherwise. */
-function feedByToken(db: DB, token: string): FeedRow | undefined {
+async function feedByToken(
+  db: DB,
+  token: string
+): Promise<FeedRow | undefined> {
   const dot = token.indexOf(".")
   if (dot < 0) return undefined
-  const feed = db
+  const feed = await db
     .select()
     .from(icsFeeds)
     .where(
@@ -111,7 +122,7 @@ function feedByToken(db: DB, token: string): FeedRow | undefined {
   if (given.length !== expected.length || !timingSafeEqual(given, expected))
     return undefined
   // Disabled accounts and staff who lost the studio lose the feed too (BR-001-09).
-  const owner = loadSessionUser(db, feed.userId)
+  const owner = await loadSessionUser(db, feed.userId)
   if (!owner) return undefined
   if (feed.studioId && !can(owner, "event.view", { studioId: feed.studioId }))
     return undefined
@@ -199,7 +210,7 @@ function renderCalendar(name: string, events: VEventInput[]): string {
 }
 
 /** Event days inside the feed window, for the given events. */
-function dayRows(db: DB, eventIds: string[]) {
+async function dayRows(db: DB, eventIds: string[]) {
   if (eventIds.length === 0) return []
   const back = new Date(
     Date.parse(now()) - WINDOW_BACK_DAYS * DAY_MS
@@ -207,34 +218,37 @@ function dayRows(db: DB, eventIds: string[]) {
   const ahead = new Date(
     Date.parse(now()) + WINDOW_AHEAD_DAYS * DAY_MS
   ).toISOString()
-  return db
-    .select()
-    .from(eventDays)
-    .where(inArray(eventDays.eventId, eventIds))
-    .all()
-    .filter((d) => d.endsAt >= back && d.startsAt <= ahead)
+  return (
+    await db
+      .select()
+      .from(eventDays)
+      .where(inArray(eventDays.eventId, eventIds))
+      .all()
+  ).filter((d) => d.endsAt >= back && d.startsAt <= ahead)
 }
 
-function personalFeed(db: DB, userId: string): string {
+async function personalFeed(db: DB, userId: string): Promise<string> {
   const participantOf = new Set(
-    db
-      .select({ eventId: eventParticipants.eventId })
-      .from(eventParticipants)
-      .where(eq(eventParticipants.userId, userId))
-      .all()
-      .map((r) => r.eventId)
+    (
+      await db
+        .select({ eventId: eventParticipants.eventId })
+        .from(eventParticipants)
+        .where(eq(eventParticipants.userId, userId))
+        .all()
+    ).map((r) => r.eventId)
   )
-  const mine = db
-    .select()
-    .from(events)
-    .where(inArray(events.state, [...FEED_STATES]))
-    .all()
-    .filter(
-      (e) =>
-        e.requesterId === userId ||
-        e.sponsorId === userId ||
-        participantOf.has(e.id)
-    )
+  const mine = (
+    await db
+      .select()
+      .from(events)
+      .where(inArray(events.state, [...FEED_STATES]))
+      .all()
+  ).filter(
+    (e) =>
+      e.requesterId === userId ||
+      e.sponsorId === userId ||
+      participantOf.has(e.id)
+  )
   const visible = mine.filter(
     (e) =>
       !PENDING.includes(e.state) ||
@@ -245,9 +259,9 @@ function personalFeed(db: DB, userId: string): string {
 }
 
 /** A staff member's view of one studio: booked time with titles; pending requests are left out (F-009 §5). */
-function studioFeed(db: DB, studioId: string): string {
+async function studioFeed(db: DB, studioId: string): Promise<string> {
   const booked = FEED_STATES.filter((s) => !PENDING.includes(s))
-  const rows = db
+  const rows = await db
     .select()
     .from(events)
     .where(and(eq(events.studioId, studioId), inArray(events.state, booked)))
@@ -255,33 +269,35 @@ function studioFeed(db: DB, studioId: string): string {
   return renderCalendarFor(db, rows, { titlesOnly: true })
 }
 
-function renderCalendarFor(
+async function renderCalendarFor(
   db: DB,
   rows: (typeof events.$inferSelect)[],
   opts: { titlesOnly: boolean }
-): string {
-  const days = dayRows(
+): Promise<string> {
+  const days = await dayRows(
     db,
     rows.map((r) => r.id)
   )
   const byId = new Map(rows.map((r) => [r.id, r]))
   const studioNames = new Map(
-    db
-      .select({
-        id: studios.id,
-        name: studios.name,
-        location: studios.location,
-      })
-      .from(studios)
-      .all()
-      .map((s) => [s.id, s])
+    (
+      await db
+        .select({
+          id: studios.id,
+          name: studios.name,
+          location: studios.location,
+        })
+        .from(studios)
+        .all()
+    ).map((s) => [s.id, s])
   )
   const userNames = new Map(
-    db
-      .select({ id: users.id, displayName: users.displayName })
-      .from(users)
-      .all()
-      .map((u) => [u.id, u.displayName])
+    (
+      await db
+        .select({ id: users.id, displayName: users.displayName })
+        .from(users)
+        .all()
+    ).map((u) => [u.id, u.displayName])
   )
   const items: VEventInput[] = []
   for (const d of days) {
@@ -304,18 +320,19 @@ function renderCalendarFor(
       items.push(base)
       continue
     }
-    const lines = db
-      .select({ qty: equipmentLines.qty, name: equipmentTypes.name })
-      .from(equipmentLines)
-      .innerJoin(
-        equipmentTypes,
-        eq(equipmentTypes.id, equipmentLines.equipmentTypeId)
-      )
-      .where(eq(equipmentLines.eventId, ev.id))
-      .all()
-      .filter((l) => l.qty > 0)
-    const pickup = pickupOpensAt(db, ev)
-    const type = typeOf(db, ev.eventTypeId)
+    const lines = (
+      await db
+        .select({ qty: equipmentLines.qty, name: equipmentTypes.name })
+        .from(equipmentLines)
+        .innerJoin(
+          equipmentTypes,
+          eq(equipmentTypes.id, equipmentLines.equipmentTypeId)
+        )
+        .where(eq(equipmentLines.eventId, ev.id))
+        .all()
+    ).filter((l) => l.qty > 0)
+    const pickup = await pickupOpensAt(db, ev)
+    const type = await typeOf(db, ev.eventTypeId)
     const description = [
       `Type: ${type.name}`,
       ev.sponsorId ? `Sponsor: ${userNames.get(ev.sponsorId) ?? ""}` : "",
@@ -341,54 +358,62 @@ function sha1(s: string): string {
 
 // ── Routes ───────────────────────────────────────────────────────────
 
-function requireStudioAccess(
+async function requireStudioAccess(
   db: DB,
   user: SessionUser,
   studioId: string
-): void {
+): Promise<void> {
   if (!can(user, "event.view", { studioId })) throw forbidden()
   if (
-    !db
+    !(await db
       .select({ id: studios.id })
       .from(studios)
       .where(eq(studios.id, studioId))
-      .get()
+      .get())
   )
     throw notFound("Studio")
 }
 
 export const routes = new Hono<AppEnv>()
-  .get("/feed", (c) => {
+  .get("/feed", async (c) => {
     const user = requireUser(c)
-    return c.json({ url: feedUrl(feedFor(c.var.db, user.id, null)) })
+    return c.json({
+      url: feedUrl(await feedFor(c.var.db, user.id, null)),
+    })
   })
-  .post("/feed/regenerate", (c) => {
+  .post("/feed/regenerate", async (c) => {
     const user = requireUser(c)
-    return c.json({ url: feedUrl(feedFor(c.var.db, user.id, null, true)) })
+    return c.json({
+      url: feedUrl(await feedFor(c.var.db, user.id, null, true)),
+    })
   })
-  .get("/studio-feed/:studioId", (c) => {
+  .get("/studio-feed/:studioId", async (c) => {
     const user = requireUser(c)
     const studioId = c.req.param("studioId")
-    requireStudioAccess(c.var.db, user, studioId)
-    return c.json({ url: feedUrl(feedFor(c.var.db, user.id, studioId)) })
+    await requireStudioAccess(c.var.db, user, studioId)
+    return c.json({
+      url: feedUrl(await feedFor(c.var.db, user.id, studioId)),
+    })
   })
-  .post("/studio-feed/:studioId/regenerate", (c) => {
+  .post("/studio-feed/:studioId/regenerate", async (c) => {
     const user = requireUser(c)
     const studioId = c.req.param("studioId")
-    requireStudioAccess(c.var.db, user, studioId)
-    return c.json({ url: feedUrl(feedFor(c.var.db, user.id, studioId, true)) })
+    await requireStudioAccess(c.var.db, user, studioId)
+    return c.json({
+      url: feedUrl(await feedFor(c.var.db, user.id, studioId, true)),
+    })
   })
 
 /** /ics — public, token-authenticated ICS feeds (BR-009-06). */
-export const icsRoutes = new Hono<AppEnv>().get("/:file", (c) => {
+export const icsRoutes = new Hono<AppEnv>().get("/:file", async (c) => {
   const file = c.req.param("file")
   if (!file.endsWith(".ics")) throw notFound("Feed")
   const db = c.var.db
-  const feed = feedByToken(db, file.slice(0, -".ics".length))
+  const feed = await feedByToken(db, file.slice(0, -".ics".length))
   if (!feed) throw notFound("Feed")
   const body = feed.studioId
-    ? studioFeed(db, feed.studioId)
-    : personalFeed(db, feed.userId!)
+    ? await studioFeed(db, feed.studioId)
+    : await personalFeed(db, feed.userId!)
   const etag = `"${sha1(body)}"`
   const headers = {
     etag,

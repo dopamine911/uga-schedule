@@ -2,7 +2,7 @@ import type { DB } from "../db/client.ts"
 import { auditLog } from "../db/schema.ts"
 
 /** Append-only audit entry (NFR-AUD-01). Call inside the same transaction as the change. */
-export function audit(
+export async function audit(
   db: DB,
   entry: {
     actorId: string | null
@@ -13,8 +13,9 @@ export function audit(
     after?: unknown
     reason?: string
   }
-): void {
-  db.insert(auditLog)
+): Promise<void> {
+  await db
+    .insert(auditLog)
     .values({
       actorId: entry.actorId,
       action: entry.action,

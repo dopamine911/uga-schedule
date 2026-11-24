@@ -13,12 +13,10 @@ function dayOffset(n: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-export function seed(db: DB): void {
-  db.transaction((tx) => {
-    const t = tx as unknown as DB
-
+export async function seed(db: DB): Promise<void> {
+  await db.transaction(async (tx) => {
     // Levels (F-002)
-    const [l1, l2, l3] = t
+    const [l1, l2, l3] = await tx
       .insert(s.levels)
       .values([
         {
@@ -41,7 +39,7 @@ export function seed(db: DB): void {
       .all()
 
     // Studios (F-004)
-    const [studioA, studioB, studioC] = t
+    const [studioA, studioB, studioC] = await tx
       .insert(s.studios)
       .values([
         {
@@ -97,7 +95,7 @@ export function seed(db: DB): void {
           closes: "18:00",
         })
     }
-    t.insert(s.openingHours).values(hours).run()
+    await tx.insert(s.openingHours).values(hours).run()
 
     // Users and roles (F-001)
     const mk = (
@@ -110,23 +108,25 @@ export function seed(db: DB): void {
       displayName: name,
       affiliation,
     })
-    const [admin, manager, sam, tara, patel, nguyen, alice, ben, chloe, dan] = t
-      .insert(s.users)
-      .values([
-        mk("ada.admin", "Ada Admin", "staff"),
-        mk("eli.manager", "Eli Manager", "staff"),
-        mk("sam.staff", "Sam Staff", "staff"),
-        mk("tara.tech", "Tara Tech", "staff"),
-        mk("priya.patel", "Prof. Priya Patel", "faculty"),
-        mk("minh.nguyen", "Prof. Minh Nguyen", "faculty"),
-        mk("alice.student", "Alice Student", "student"),
-        mk("ben.student", "Ben Student", "student"),
-        mk("chloe.student", "Chloe Student", "student"),
-        mk("dan.student", "Dan Student", "student"),
-      ])
-      .returning()
-      .all()
-    t.insert(s.roleAssignments)
+    const [admin, manager, sam, tara, patel, nguyen, alice, ben, chloe, dan] =
+      await tx
+        .insert(s.users)
+        .values([
+          mk("ada.admin", "Ada Admin", "staff"),
+          mk("eli.manager", "Eli Manager", "staff"),
+          mk("sam.staff", "Sam Staff", "staff"),
+          mk("tara.tech", "Tara Tech", "staff"),
+          mk("priya.patel", "Prof. Priya Patel", "faculty"),
+          mk("minh.nguyen", "Prof. Minh Nguyen", "faculty"),
+          mk("alice.student", "Alice Student", "student"),
+          mk("ben.student", "Ben Student", "student"),
+          mk("chloe.student", "Chloe Student", "student"),
+          mk("dan.student", "Dan Student", "student"),
+        ])
+        .returning()
+        .all()
+    await tx
+      .insert(s.roleAssignments)
       .values([
         { userId: admin!.id, role: "ADMIN" },
         { userId: manager!.id, role: "EQUIPMENT_MANAGER" },
@@ -145,7 +145,7 @@ export function seed(db: DB): void {
     // Courses and grants (F-002)
     const termStart = dayOffset(-30)
     const termEnd = dayOffset(90)
-    const [film101, film201, film301] = t
+    const [film101, film201, film301] = await tx
       .insert(s.courseOfferings)
       .values([
         {
@@ -175,13 +175,18 @@ export function seed(db: DB): void {
       ])
       .returning()
       .all()
-    const enroll = (courseId: string, levelId: string, userId: string) => {
-      const e = t
+    const enroll = async (
+      courseId: string,
+      levelId: string,
+      userId: string
+    ) => {
+      const e = await tx
         .insert(s.enrollments)
         .values({ courseOfferingId: courseId, userId })
         .returning()
         .get()
-      t.insert(s.levelGrants)
+      await tx
+        .insert(s.levelGrants)
         .values({
           userId,
           levelId,
@@ -193,12 +198,13 @@ export function seed(db: DB): void {
         })
         .run()
     }
-    enroll(film101!.id, l1!.id, alice!.id)
-    enroll(film201!.id, l2!.id, ben!.id)
-    enroll(film301!.id, l3!.id, chloe!.id)
+    await enroll(film101!.id, l1!.id, alice!.id)
+    await enroll(film201!.id, l2!.id, ben!.id)
+    await enroll(film301!.id, l3!.id, chloe!.id)
     // Manual Level 3 grant ending the day before Ben's Green screen interview, which books a
     // Level 3 FX6: the first job run sends GRANT_EXPIRING to Ben and his sponsor (BR-002-10).
-    t.insert(s.levelGrants)
+    await tx
+      .insert(s.levelGrants)
       .values({
         userId: ben!.id,
         levelId: l3!.id,
@@ -211,8 +217,8 @@ export function seed(db: DB): void {
       .run()
 
     // Equipment (F-003): see seedEquipment.ts for the full sample catalog.
-    const catalog = seedEquipment(
-      t,
+    const catalog = await seedEquipment(
+      tx,
       { 1: l1!.id, 2: l2!.id, 3: l3!.id },
       dayOffset
     )
@@ -228,7 +234,7 @@ export function seed(db: DB): void {
     const fx6 = typeNamed("Sony FX6 Kit")
 
     // Event types and stage schedules (F-005)
-    const [podcast, shoot, thesis] = t
+    const [podcast, shoot, thesis] = await tx
       .insert(s.eventTypes)
       .values([
         {
@@ -260,7 +266,8 @@ export function seed(db: DB): void {
       ])
       .returning()
       .all()
-    t.insert(s.eventTypeStudios)
+    await tx
+      .insert(s.eventTypeStudios)
       .values([
         { eventTypeId: podcast!.id, studioId: studioA!.id },
         { eventTypeId: shoot!.id, studioId: studioB!.id },
@@ -270,15 +277,16 @@ export function seed(db: DB): void {
       ])
       .run()
     const D = 1440
-    const st = (
+    const st = async (
       eventTypeId: string,
       rows: Omit<typeof s.stageTemplates.$inferInsert, "eventTypeId">[]
-    ) =>
-      t
+    ) => {
+      await tx
         .insert(s.stageTemplates)
         .values(rows.map((r) => ({ ...r, eventTypeId })))
         .run()
-    st(podcast!.id, [
+    }
+    await st(podcast!.id, [
       {
         seq: 1,
         name: "Your session: what to expect",
@@ -309,7 +317,7 @@ export function seed(db: DB): void {
         message: "Please return all equipment for {event.title} on time.",
       },
     ])
-    st(shoot!.id, [
+    await st(shoot!.id, [
       {
         seq: 1,
         name: "Your shoot: what to expect",
@@ -349,7 +357,7 @@ export function seed(db: DB): void {
         message: "Your shoot day starts in one hour.",
       },
     ])
-    st(thesis!.id, [
+    await st(thesis!.id, [
       {
         seq: 1,
         name: "Your production: what to expect",
@@ -420,27 +428,28 @@ export function seed(db: DB): void {
     ])
 
     // Sample events (F-006) so every role has something to look at.
-    const mkEvent = (
+    const mkEvent = async (
       e: Omit<typeof s.events.$inferInsert, "id">,
       days: { day: string; startTime: string; endTime: string }[],
       lines: { equipmentTypeId: string; qty: number }[]
     ) => {
-      const ev = t.insert(s.events).values(e).returning().get()
+      const ev = await tx.insert(s.events).values(e).returning().get()
       const dayRows = days.map((d) => ({
         eventId: ev.id,
         ...d,
         startsAt: localToUtc(d.day, d.startTime, config.tz),
         endsAt: localToUtc(d.day, d.endTime, config.tz),
       }))
-      t.insert(s.eventDays).values(dayRows).run()
+      await tx.insert(s.eventDays).values(dayRows).run()
       if (lines.length)
-        t.insert(s.equipmentLines)
+        await tx
+          .insert(s.equipmentLines)
           .values(lines.map((l) => ({ ...l, eventId: ev.id })))
           .run()
       return { ev, dayRows }
     }
     const ts = now()
-    mkEvent(
+    await mkEvent(
       {
         title: "Episode 4: Campus Food",
         eventTypeId: podcast!.id,
@@ -456,7 +465,7 @@ export function seed(db: DB): void {
         { equipmentTypeId: xlr.id, qty: 2 },
       ]
     )
-    mkEvent(
+    await mkEvent(
       {
         title: "Green screen interview",
         eventTypeId: shoot!.id,
@@ -475,7 +484,7 @@ export function seed(db: DB): void {
         { equipmentTypeId: fx6.id, qty: 1 },
       ]
     )
-    const thesisEvent = mkEvent(
+    const thesisEvent = await mkEvent(
       {
         title: "Thesis: The Last Projectionist",
         eventTypeId: thesis!.id,
@@ -497,14 +506,13 @@ export function seed(db: DB): void {
         { equipmentTypeId: sm7b.id, qty: 1 },
       ]
     )
-    t.insert(s.eventParticipants)
+    await tx
+      .insert(s.eventParticipants)
       .values({ eventId: thesisEvent.ev.id, userId: ben!.id })
       .run()
-    const templates = t
-      .select()
-      .from(s.stageTemplates)
-      .all()
-      .filter((x) => x.eventTypeId === thesis!.id)
+    const templates = (await tx.select().from(s.stageTemplates).all()).filter(
+      (x) => x.eventTypeId === thesis!.id
+    )
     const planned = planStages(
       templates,
       thesisEvent.dayRows.map((d) => ({ start: d.startsAt, end: d.endsAt })),
@@ -512,7 +520,8 @@ export function seed(db: DB): void {
       config.tz,
       config.quietHours
     )
-    t.insert(s.stageInstances)
+    await tx
+      .insert(s.stageInstances)
       .values(
         planned.map((p) => {
           const tpl = templates.find((x) => x.id === p.templateId)!

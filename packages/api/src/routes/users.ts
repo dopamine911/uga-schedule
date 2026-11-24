@@ -55,10 +55,13 @@ export interface RoleView {
   source: "auto" | "manual"
 }
 
-function rolesOf(db: DB, userIds: readonly string[]): Map<string, RoleView[]> {
+async function rolesOf(
+  db: DB,
+  userIds: readonly string[]
+): Promise<Map<string, RoleView[]>> {
   const out = new Map<string, RoleView[]>()
   if (userIds.length === 0) return out
-  const rows = db
+  const rows = await db
     .select({
       id: roleAssignments.id,
       userId: roleAssignments.userId,
@@ -83,38 +86,41 @@ function rolesOf(db: DB, userIds: readonly string[]): Map<string, RoleView[]> {
  * Distinct active Admins who can still manage users and roles (BR-001-06): an Admin whose
  * role.assign permission was removed (BR-001-14) cannot rescue the system, so they don't count.
  */
-function activeAdminIds(db: DB): string[] {
+async function activeAdminIds(db: DB): Promise<string[]> {
   const blocked = new Set(
-    db
-      .select({ id: permissionDenials.userId })
-      .from(permissionDenials)
-      .where(
-        and(
-          eq(permissionDenials.permission, "role.assign"),
-          isNull(permissionDenials.studioId)
+    (
+      await db
+        .select({ id: permissionDenials.userId })
+        .from(permissionDenials)
+        .where(
+          and(
+            eq(permissionDenials.permission, "role.assign"),
+            isNull(permissionDenials.studioId)
+          )
         )
-      )
-      .all()
-      .map((r) => r.id)
+        .all()
+    ).map((r) => r.id)
   )
   return [
     ...new Set(
-      db
-        .select({ id: users.id })
-        .from(roleAssignments)
-        .innerJoin(users, eq(users.id, roleAssignments.userId))
-        .where(
-          and(eq(roleAssignments.role, "ADMIN"), eq(users.status, "active"))
-        )
-        .all()
+      (
+        await db
+          .select({ id: users.id })
+          .from(roleAssignments)
+          .innerJoin(users, eq(users.id, roleAssignments.userId))
+          .where(
+            and(eq(roleAssignments.role, "ADMIN"), eq(users.status, "active"))
+          )
+          .all()
+      )
         .map((r) => r.id)
         .filter((id) => !blocked.has(id))
     ),
   ]
 }
 
-function denialsOf(db: DB, userId: string) {
-  return db
+async function denialsOf(db: DB, userId: string) {
+  return await db
     .select({
       permission: permissionDenials.permission,
       studioId: permissionDenials.studioId,
@@ -131,13 +137,13 @@ function denialsOf(db: DB, userId: string) {
 }
 
 /** The denial row for (user, permission, studio); null studio = everywhere. */
-function findDenial(
+async function findDenial(
   db: DB,
   userId: string,
   permission: Permission,
   studioId: string | null
 ) {
-  return db
+  return await db
     .select()
     .from(permissionDenials)
     .where(
@@ -152,8 +158,8 @@ function findDenial(
     .get()
 }
 
-function getUser(db: DB, id: string) {
-  const u = db.select().from(users).where(eq(users.id, id)).get()
+async function getUser(db: DB, id: string) {
+  const u = await db.select().from(users).where(eq(users.id, id)).get()
   if (!u) throw notFound("User")
   return u
 }
@@ -174,10 +180,10 @@ const createBody = profileBody.extend({
 })
 
 /** BR-001-05 plus existence/duplicate checks for a set of role assignments. */
-function validateRoles(
+async function validateRoles(
   db: DB,
   roles: readonly { role: RoleCode; studioId?: string | null }[]
-): void {
+): Promise<void> {
   const seen = new Set<string>()
   for (const r of roles) {
     const studioId = r.studioId ?? null
@@ -193,11 +199,11 @@ function validateRoles(
       )
     if (
       studioId &&
-      !db
+      !(await db
         .select({ id: studios.id })
         .from(studios)
         .where(eq(studios.id, studioId))
-        .get()
+        .get())
     )
       throw badRequest("UNKNOWN_STUDIO", "Unknown studio.")
     const key = `${r.role}:${studioId ?? ""}`
@@ -207,8 +213,12 @@ function validateRoles(
   }
 }
 
-function emailTaken(db: DB, email: string, exceptId?: string): boolean {
-  const hit = db
+async function emailTaken(
+  db: DB,
+  email: string,
+  exceptId?: string
+): Promise<boolean> {
+  const hit = await db
     .select({ id: users.id })
     .from(users)
     .where(eq(users.email, email))
@@ -217,11 +227,11 @@ function emailTaken(db: DB, email: string, exceptId?: string): boolean {
 }
 
 export const routes = new Hono<AppEnv>()
-  .get("/", v("query", z.object({ q: z.string().optional() })), (c) => {
+  .get("/", v("query", z.object({ q: z.string().optional() })), async (c) => {
     authorize(c, "user.list")
     const db = c.var.db
     const q = c.req.valid("query").q?.trim()
-    const rows = db
+    const rows = await db
       .select()
       .from(users)
       .where(
@@ -231,17 +241,18 @@ export const routes = new Hono<AppEnv>()
       )
       .orderBy(asc(users.displayName))
       .all()
-    const roles = rolesOf(
+    const roles = await rolesOf(
       db,
       rows.map((u) => u.id)
     )
     const deniedCounts = new Map(
-      db
-        .select({ userId: permissionDenials.userId, n: count() })
-        .from(permissionDenials)
-        .groupBy(permissionDenials.userId)
-        .all()
-        .map((r) => [r.userId, r.n])
+      (
+        await db
+          .select({ userId: permissionDenials.userId, n: count() })
+          .from(permissionDenials)
+          .groupBy(permissionDenials.userId)
+          .all()
+      ).map((r) => [r.userId, r.n])
     )
     return c.json(
       rows.map((u) => ({
@@ -256,9 +267,9 @@ export const routes = new Hono<AppEnv>()
       }))
     )
   })
-  .get("/sponsors", (c) => {
+  .get("/sponsors", async (c) => {
     requireUser(c)
-    const rows = c.var.db
+    const rows = await c.var.db
       .selectDistinct({
         id: users.id,
         displayName: users.displayName,
@@ -274,80 +285,82 @@ export const routes = new Hono<AppEnv>()
     return c.json(rows)
   })
   // People picker for participants and holds: names only, and only for a typed query, so it cannot list the directory.
-  .get("/search", v("query", z.object({ q: z.string().default("") })), (c) => {
-    requireUser(c)
-    const q = c.req.valid("query").q.trim()
-    if (q.length < 2) return c.json([])
-    const rows = c.var.db
-      .select({ id: users.id, displayName: users.displayName })
-      .from(users)
-      .where(
-        and(
-          eq(users.status, "active"),
-          or(like(users.displayName, `%${q}%`), like(users.email, `${q}%`))
+  .get(
+    "/search",
+    v("query", z.object({ q: z.string().default("") })),
+    async (c) => {
+      requireUser(c)
+      const q = c.req.valid("query").q.trim()
+      if (q.length < 2) return c.json([])
+      const rows = await c.var.db
+        .select({ id: users.id, displayName: users.displayName })
+        .from(users)
+        .where(
+          and(
+            eq(users.status, "active"),
+            or(like(users.displayName, `%${q}%`), like(users.email, `${q}%`))
+          )
         )
-      )
-      .orderBy(asc(users.displayName))
-      .limit(10)
-      .all()
-    return c.json(rows)
-  })
+        .orderBy(asc(users.displayName))
+        .limit(10)
+        .all()
+      return c.json(rows)
+    }
+  )
   // Pre-provisions an account before first sign-in (F-001 §5). The SSO identity is linked on first login
   // by email; until then the subject is a placeholder that can never match a real IdP subject.
-  .post("/", v("json", createBody), (c) => {
+  .post("/", v("json", createBody), async (c) => {
     const me = authorize(c, "role.assign")
     const db = c.var.db
     const body = c.req.valid("json")
-    if (emailTaken(db, body.email))
+    if (await emailTaken(db, body.email))
       throw conflict(
         "EMAIL_TAKEN",
         "An account with this email already exists."
       )
-    validateRoles(db, body.roles)
-    const created = db.transaction(() => {
-      const u = db
-        .insert(users)
+    await validateRoles(db, body.roles)
+    const u = await db
+      .insert(users)
+      .values({
+        idpSubject: `pending:${body.email}`,
+        email: body.email,
+        displayName: body.displayName,
+        affiliation: body.affiliation,
+      })
+      .returning()
+      .get()
+    await audit(db, {
+      actorId: me.id,
+      action: "user.create",
+      entityType: "user",
+      entityId: u.id,
+      after: {
+        email: u.email,
+        displayName: u.displayName,
+        affiliation: u.affiliation,
+      },
+    })
+    for (const r of body.roles) {
+      const a = await db
+        .insert(roleAssignments)
         .values({
-          idpSubject: `pending:${body.email}`,
-          email: body.email,
-          displayName: body.displayName,
-          affiliation: body.affiliation,
+          userId: u.id,
+          role: r.role,
+          studioId: r.studioId ?? null,
+          source: "manual",
+          assignedBy: me.id,
         })
         .returning()
         .get()
-      audit(db, {
+      await audit(db, {
         actorId: me.id,
-        action: "user.create",
-        entityType: "user",
-        entityId: u.id,
-        after: {
-          email: u.email,
-          displayName: u.displayName,
-          affiliation: u.affiliation,
-        },
+        action: "role.assign",
+        entityType: "role_assignment",
+        entityId: a.id,
+        after: { userId: u.id, role: r.role, studioId: r.studioId ?? null },
       })
-      for (const r of body.roles) {
-        const a = db
-          .insert(roleAssignments)
-          .values({
-            userId: u.id,
-            role: r.role,
-            studioId: r.studioId ?? null,
-            source: "manual",
-            assignedBy: me.id,
-          })
-          .returning()
-          .get()
-        audit(db, {
-          actorId: me.id,
-          action: "role.assign",
-          entityType: "role_assignment",
-          entityId: a.id,
-          after: { userId: u.id, role: r.role, studioId: r.studioId ?? null },
-        })
-      }
-      return u
-    })
+    }
+    const created = u
     return c.json(
       {
         id: created.id,
@@ -357,58 +370,59 @@ export const routes = new Hono<AppEnv>()
       201
     )
   })
-  .put("/:id/profile", v("json", profileBody), (c) => {
+  .put("/:id/profile", v("json", profileBody), async (c) => {
     const me = authorize(c, "role.assign")
     const db = c.var.db
-    const u = getUser(db, c.req.param("id"))
+    const u = await getUser(db, c.req.param("id"))
     const body = c.req.valid("json")
-    if (emailTaken(db, body.email, u.id))
+    if (await emailTaken(db, body.email, u.id))
       throw conflict(
         "EMAIL_TAKEN",
         "An account with this email already exists."
       )
-    db.transaction(() => {
-      db.update(users)
-        .set({
-          displayName: body.displayName,
-          email: body.email,
-          affiliation: body.affiliation,
-          // Keep an unlinked placeholder subject in step with the email it will be matched by.
-          ...(u.idpSubject.startsWith("pending:")
-            ? { idpSubject: `pending:${body.email}` }
-            : {}),
-        })
-        .where(eq(users.id, u.id))
-        .run()
-      audit(db, {
-        actorId: me.id,
-        action: "user.update",
-        entityType: "user",
-        entityId: u.id,
-        before: {
-          displayName: u.displayName,
-          email: u.email,
-          affiliation: u.affiliation,
-        },
-        after: body,
+    await db
+      .update(users)
+      .set({
+        displayName: body.displayName,
+        email: body.email,
+        affiliation: body.affiliation,
+        // Keep an unlinked placeholder subject in step with the email it will be matched by.
+        ...(u.idpSubject.startsWith("pending:")
+          ? { idpSubject: `pending:${body.email}` }
+          : {}),
       })
+      .where(eq(users.id, u.id))
+      .run()
+    await audit(db, {
+      actorId: me.id,
+      action: "user.update",
+      entityType: "user",
+      entityId: u.id,
+      before: {
+        displayName: u.displayName,
+        email: u.email,
+        affiliation: u.affiliation,
+      },
+      after: body,
     })
     return c.json({ id: u.id, ...body })
   })
-  .get("/:id", (c) => {
+  .get("/:id", async (c) => {
     const me = requireUser(c)
     const id = c.req.param("id")
     if (me.id !== id && !can(me, "user.list")) throw notFound("User")
     const db = c.var.db
-    const u = getUser(db, id)
+    const u = await getUser(db, id)
     const activeHoldCount =
-      db
-        .select({ n: count() })
-        .from(holds)
-        .where(and(eq(holds.userId, id), eq(holds.status, "active")))
-        .get()?.n ?? 0
-    const roles = rolesOf(db, [id]).get(id) ?? []
-    const denials = denialsOf(db, id)
+      (
+        await db
+          .select({ n: count() })
+          .from(holds)
+          .where(and(eq(holds.userId, id), eq(holds.status, "active")))
+          .get()
+      )?.n ?? 0
+    const roles = (await rolesOf(db, [id])).get(id) ?? []
+    const denials = await denialsOf(db, id)
     return c.json({
       id: u.id,
       displayName: u.displayName,
@@ -419,7 +433,7 @@ export const routes = new Hono<AppEnv>()
       /** False until the person signs in with university SSO for the first time. */
       linked: !u.idpSubject.startsWith("pending:"),
       roles,
-      grants: listGrants(db, id),
+      grants: await listGrants(db, id),
       activeHoldCount,
       denials,
       /** What the roles grant, and where grants were removed individually (BR-001-14/15). */
@@ -443,10 +457,10 @@ export const routes = new Hono<AppEnv>()
         reason: z.string().trim().min(3).max(500),
       })
     ),
-    (c) => {
+    async (c) => {
       const me = authorize(c, "role.assign")
       const db = c.var.db
-      const u = getUser(db, c.req.param("id"))
+      const u = await getUser(db, c.req.param("id"))
       const { permission, studioId, reason } = c.req.valid("json")
       if (permission === "role.assign" && u.id === me.id)
         throw conflict(
@@ -455,7 +469,7 @@ export const routes = new Hono<AppEnv>()
         )
       if (
         permission === "role.assign" &&
-        activeAdminIds(db).filter((id) => id !== u.id).length === 0
+        (await activeAdminIds(db)).filter((id) => id !== u.id).length === 0
       )
         throw conflict(
           "LAST_ADMIN",
@@ -468,65 +482,67 @@ export const routes = new Hono<AppEnv>()
             "This permission applies system-wide and can't be removed for one studio."
           )
         if (
-          !db
+          !(await db
             .select({ id: studios.id })
             .from(studios)
             .where(eq(studios.id, studioId))
-            .get()
+            .get())
         )
           throw badRequest("UNKNOWN_STUDIO", "Unknown studio.")
         // Removing something the roles don't give at that studio would be a no-op that reads like a restriction.
         if (
-          !can({ roles: rolesOf(db, [u.id]).get(u.id) ?? [] }, permission, {
-            studioId,
-          })
+          !can(
+            { roles: (await rolesOf(db, [u.id])).get(u.id) ?? [] },
+            permission,
+            {
+              studioId,
+            }
+          )
         )
           throw badRequest(
             "NOT_GRANTED_THERE",
             "This person's roles don't give this permission at that studio."
           )
-        if (findDenial(db, u.id, permission, null))
+        if (await findDenial(db, u.id, permission, null))
           throw conflict(
             "ALREADY_REMOVED",
             "This permission is already removed everywhere for this user."
           )
       }
-      if (findDenial(db, u.id, permission, studioId))
+      if (await findDenial(db, u.id, permission, studioId))
         throw conflict(
           "ALREADY_REMOVED",
           "This permission is already removed for this user."
         )
-      const row = db.transaction(() => {
-        // An everywhere-removal supersedes per-studio ones; drop them so restoring is a single step.
-        if (studioId === null)
-          db.delete(permissionDenials)
-            .where(
-              and(
-                eq(permissionDenials.userId, u.id),
-                eq(permissionDenials.permission, permission)
-              )
+      // An everywhere-removal supersedes per-studio ones; drop them so restoring is a single step.
+      if (studioId === null)
+        await db
+          .delete(permissionDenials)
+          .where(
+            and(
+              eq(permissionDenials.userId, u.id),
+              eq(permissionDenials.permission, permission)
             )
-            .run()
-        const r = db
-          .insert(permissionDenials)
-          .values({
-            userId: u.id,
-            permission,
-            studioId,
-            reason,
-            createdBy: me.id,
-          })
-          .returning()
-          .get()
-        audit(db, {
-          actorId: me.id,
-          action: "permission.remove",
-          entityType: "user",
-          entityId: u.id,
-          after: { permission, studioId },
+          )
+          .run()
+      const row = await db
+        .insert(permissionDenials)
+        .values({
+          userId: u.id,
+          permission,
+          studioId,
           reason,
+          createdBy: me.id,
         })
-        return r
+        .returning()
+        .get()
+      await audit(db, {
+        actorId: me.id,
+        action: "permission.remove",
+        entityType: "user",
+        entityId: u.id,
+        after: { permission, studioId },
+        reason,
       })
       return c.json(
         {
@@ -544,39 +560,38 @@ export const routes = new Hono<AppEnv>()
     v("param", z.object({ id: z.string(), permission: z.enum(PERMISSIONS) })),
     // studioId absent = the everywhere-removal.
     v("query", z.object({ studioId: z.string().optional() })),
-    (c) => {
+    async (c) => {
       const me = authorize(c, "role.assign")
       const db = c.var.db
       const { id, permission } = c.req.valid("param")
       const studioId = c.req.valid("query").studioId ?? null
-      const u = getUser(db, id)
-      const row = findDenial(db, u.id, permission, studioId)
+      const u = await getUser(db, id)
+      const row = await findDenial(db, u.id, permission, studioId)
       if (!row) throw notFound("Removed permission")
-      db.transaction(() => {
-        db.delete(permissionDenials)
-          .where(eq(permissionDenials.id, row.id))
-          .run()
-        audit(db, {
-          actorId: me.id,
-          action: "permission.restore",
-          entityType: "user",
-          entityId: u.id,
-          before: { permission, studioId, reason: row.reason },
-        })
+      await db
+        .delete(permissionDenials)
+        .where(eq(permissionDenials.id, row.id))
+        .run()
+      await audit(db, {
+        actorId: me.id,
+        action: "permission.restore",
+        entityType: "user",
+        entityId: u.id,
+        before: { permission, studioId, reason: row.reason },
       })
       return c.json({ ok: true })
     }
   )
-  .post("/:id/roles", v("json", roleBody), (c) => {
+  .post("/:id/roles", v("json", roleBody), async (c) => {
     const me = authorize(c, "role.assign")
     const db = c.var.db
     const userId = c.req.param("id")
     const { role } = c.req.valid("json")
     const studioId = c.req.valid("json").studioId ?? null
-    getUser(db, userId)
-    validateRoles(db, [{ role, studioId }])
+    await getUser(db, userId)
+    await validateRoles(db, [{ role, studioId }])
     // NULL studioId is distinct in the unique index, so check duplicates here.
-    const existing = db
+    const existing = await db
       .select()
       .from(roleAssignments)
       .where(
@@ -585,38 +600,40 @@ export const routes = new Hono<AppEnv>()
       .all()
     if (existing.some((r) => r.studioId === studioId))
       throw conflict("DUPLICATE_ROLE", "The user already holds this role.")
-    const row = db.transaction(() => {
-      const r = db
-        .insert(roleAssignments)
-        .values({ userId, role, studioId, source: "manual", assignedBy: me.id })
-        .returning()
-        .get()
-      audit(db, {
-        actorId: me.id,
-        action: "role.assign",
-        entityType: "role_assignment",
-        entityId: r.id,
-        after: { userId, role, studioId },
-      })
-      return r
+    const row = await db
+      .insert(roleAssignments)
+      .values({ userId, role, studioId, source: "manual", assignedBy: me.id })
+      .returning()
+      .get()
+    await audit(db, {
+      actorId: me.id,
+      action: "role.assign",
+      entityType: "role_assignment",
+      entityId: row.id,
+      after: { userId, role, studioId },
     })
     const view: RoleView = {
       id: row.id,
       role: row.role,
       studioId: row.studioId,
       studioName: studioId
-        ? (db.select().from(studios).where(eq(studios.id, studioId)).get()
-            ?.name ?? null)
+        ? ((
+            await db
+              .select()
+              .from(studios)
+              .where(eq(studios.id, studioId))
+              .get()
+          )?.name ?? null)
         : null,
       source: row.source,
     }
     return c.json(view, 201)
   })
-  .delete("/:id/roles/:assignmentId", (c) => {
+  .delete("/:id/roles/:assignmentId", async (c) => {
     const me = authorize(c, "role.assign")
     const db = c.var.db
     const userId = c.req.param("id")
-    const r = db
+    const r = await db
       .select()
       .from(roleAssignments)
       .where(
@@ -628,34 +645,32 @@ export const routes = new Hono<AppEnv>()
       .get()
     if (!r) throw notFound("Role assignment")
     if (r.role === "ADMIN") {
-      const remaining = activeAdminIds(db).filter((id) => id !== userId)
+      const remaining = (await activeAdminIds(db)).filter((id) => id !== userId)
       if (remaining.length === 0)
         throw conflict(
           "LAST_ADMIN",
           "There must always be at least one active Admin."
         )
     }
-    db.transaction(() => {
-      db.delete(roleAssignments).where(eq(roleAssignments.id, r.id)).run()
-      audit(db, {
-        actorId: me.id,
-        action: "role.remove",
-        entityType: "role_assignment",
-        entityId: r.id,
-        before: {
-          userId,
-          role: r.role,
-          studioId: r.studioId,
-          source: r.source,
-        },
-      })
+    await db.delete(roleAssignments).where(eq(roleAssignments.id, r.id)).run()
+    await audit(db, {
+      actorId: me.id,
+      action: "role.remove",
+      entityType: "role_assignment",
+      entityId: r.id,
+      before: {
+        userId,
+        role: r.role,
+        studioId: r.studioId,
+        source: r.source,
+      },
     })
     return c.json({ ok: true })
   })
-  .patch("/:id", v("json", statusBody), (c) => {
+  .patch("/:id", v("json", statusBody), async (c) => {
     const me = authorize(c, "role.assign")
     const db = c.var.db
-    const u = getUser(db, c.req.param("id"))
+    const u = await getUser(db, c.req.param("id"))
     const { status } = c.req.valid("json")
     if (status === u.status)
       return c.json({
@@ -665,23 +680,22 @@ export const routes = new Hono<AppEnv>()
       })
     if (
       status === "disabled" &&
-      activeAdminIds(db).filter((id) => id !== u.id).length === 0
+      (await activeAdminIds(db)).filter((id) => id !== u.id).length === 0
     )
       throw conflict(
         "LAST_ADMIN",
         "There must always be at least one active Admin."
       )
-    const flaggedEvents = db.transaction(() => {
-      db.update(users).set({ status }).where(eq(users.id, u.id)).run()
-      audit(db, {
-        actorId: me.id,
-        action: status === "disabled" ? "user.disable" : "user.enable",
-        entityType: "user",
-        entityId: u.id,
-        before: { status: u.status },
-        after: { status },
-      })
-      return status === "disabled" ? recheckEvents(db, { sponsorId: u.id }) : []
+    await db.update(users).set({ status }).where(eq(users.id, u.id)).run()
+    await audit(db, {
+      actorId: me.id,
+      action: status === "disabled" ? "user.disable" : "user.enable",
+      entityType: "user",
+      entityId: u.id,
+      before: { status: u.status },
+      after: { status },
     })
+    const flaggedEvents =
+      status === "disabled" ? await recheckEvents(db, { sponsorId: u.id }) : []
     return c.json({ id: u.id, status, flaggedEvents })
   })

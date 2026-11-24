@@ -142,7 +142,7 @@ function requireState(
 }
 
 /** Validates references and normalises days, participants and equipment (merging duplicate types). */
-function normalise(db: DB, body: DraftBody, requesterId: string) {
+async function normalise(db: DB, body: DraftBody, requesterId: string) {
   const { intervals, issues } = toIntervals(body.days, config.tz)
   if (issues.length)
     throw badRequest("DAY_INVALID", issues.map((i) => i.message).join(" "), {
@@ -163,32 +163,32 @@ function normalise(db: DB, body: DraftBody, requesterId: string) {
   )
 
   if (
-    !db
+    !(await db
       .select({ id: eventTypes.id })
       .from(eventTypes)
       .where(eq(eventTypes.id, body.eventTypeId))
-      .get()
+      .get())
   )
     throw badRequest("UNKNOWN_EVENT_TYPE", "Unknown event type.")
   if (
-    !db
+    !(await db
       .select({ id: studios.id })
       .from(studios)
       .where(eq(studios.id, body.studioId))
-      .get()
+      .get())
   )
     throw badRequest("UNKNOWN_STUDIO", "Unknown studio.")
   if (
     body.sponsorId &&
-    !db
+    !(await db
       .select({ id: users.id })
       .from(users)
       .where(eq(users.id, body.sponsorId))
-      .get()
+      .get())
   )
     throw badRequest("UNKNOWN_SPONSOR", "Unknown sponsor.")
   if (participants.length) {
-    const found = db
+    const found = await db
       .select({ id: users.id })
       .from(users)
       .where(inArray(users.id, participants))
@@ -197,7 +197,7 @@ function normalise(db: DB, body: DraftBody, requesterId: string) {
       throw badRequest("UNKNOWN_PARTICIPANT", "Unknown participant.")
   }
   if (lines.length) {
-    const found = db
+    const found = await db
       .select({ id: equipmentTypes.id })
       .from(equipmentTypes)
       .where(
@@ -232,16 +232,16 @@ function draftInput(
  * Replaces days, equipment lines and participants (F-006 §6). Day rows are reused in date order so
  * their ids, and the calendar UIDs built from them, survive an edit (BR-009-01).
  */
-function writeRows(
+async function writeRows(
   db: DB,
   eventId: string,
   intervals: readonly DayInterval[],
   lines: readonly { equipmentTypeId: string; qty: number }[],
   participants: readonly string[]
-): void {
-  const existing = daysOf(db, eventId)
+): Promise<void> {
+  const existing = await daysOf(db, eventId)
   const wanted = [...intervals].sort((a, b) => a.day.localeCompare(b.day))
-  wanted.forEach((d, i) => {
+  for (const [i, d] of wanted.entries()) {
     const row = {
       day: d.day,
       startTime: d.startTime,
@@ -251,25 +251,32 @@ function writeRows(
     }
     const keep = existing[i]
     if (keep)
-      db.update(eventDays).set(row).where(eq(eventDays.id, keep.id)).run()
+      await db.update(eventDays).set(row).where(eq(eventDays.id, keep.id)).run()
     else
-      db.insert(eventDays)
+      await db
+        .insert(eventDays)
         .values({ ...row, eventId })
         .run()
-  })
+  }
   const surplus = existing.slice(wanted.length).map((d) => d.id)
   if (surplus.length)
-    db.delete(eventDays).where(inArray(eventDays.id, surplus)).run()
-  db.delete(equipmentLines).where(eq(equipmentLines.eventId, eventId)).run()
-  db.delete(eventParticipants)
+    await db.delete(eventDays).where(inArray(eventDays.id, surplus)).run()
+  await db
+    .delete(equipmentLines)
+    .where(eq(equipmentLines.eventId, eventId))
+    .run()
+  await db
+    .delete(eventParticipants)
     .where(eq(eventParticipants.eventId, eventId))
     .run()
   if (lines.length)
-    db.insert(equipmentLines)
+    await db
+      .insert(equipmentLines)
       .values(lines.map((l) => ({ ...l, eventId })))
       .run()
   if (participants.length)
-    db.insert(eventParticipants)
+    await db
+      .insert(eventParticipants)
       .values(participants.map((userId) => ({ eventId, userId })))
       .run()
 }
@@ -286,34 +293,37 @@ interface Lookups {
   types: Map<string, { id: string; name: string }>
 }
 
-function lookupsOf(db: DB): Lookups {
+async function lookupsOf(db: DB): Promise<Lookups> {
   return {
     users: new Map(
-      db
-        .select({ id: users.id, displayName: users.displayName })
-        .from(users)
-        .all()
-        .map((u) => [u.id, u])
+      (
+        await db
+          .select({ id: users.id, displayName: users.displayName })
+          .from(users)
+          .all()
+      ).map((u) => [u.id, u])
     ),
     studios: new Map(
-      db
-        .select({ id: studios.id, name: studios.name })
-        .from(studios)
-        .all()
-        .map((s) => [s.id, s])
+      (
+        await db
+          .select({ id: studios.id, name: studios.name })
+          .from(studios)
+          .all()
+      ).map((s) => [s.id, s])
     ),
     types: new Map(
-      db
-        .select({ id: eventTypes.id, name: eventTypes.name })
-        .from(eventTypes)
-        .all()
-        .map((t) => [t.id, t])
+      (
+        await db
+          .select({ id: eventTypes.id, name: eventTypes.name })
+          .from(eventTypes)
+          .all()
+      ).map((t) => [t.id, t])
     ),
   }
 }
 
 /** Row shape for the event list (BR-006-16). */
-function summaryOf(db: DB, ev: EventRow, look: Lookups) {
+async function summaryOf(db: DB, ev: EventRow, look: Lookups) {
   const requester = look.users.get(ev.requesterId)!
   const sponsor = ev.sponsorId ? look.users.get(ev.sponsorId)! : null
   return {
@@ -335,33 +345,33 @@ function summaryOf(db: DB, ev: EventRow, look: Lookups) {
     sponsor: sponsor
       ? { id: sponsor.id, displayName: sponsor.displayName }
       : null,
-    days: daysOf(db, ev.id).map((d) => ({
+    days: (await daysOf(db, ev.id)).map((d) => ({
       day: d.day,
       startTime: d.startTime,
       endTime: d.endTime,
       startsAt: d.startsAt,
       endsAt: d.endsAt,
     })),
-    nextAction: nextActionFor(db, ev),
+    nextAction: await nextActionFor(db, ev),
   }
 }
 
 /** Full detail for an event the caller may see, with the UI permission flags (`can`). */
-function detailOf(db: DB, user: SessionUser, ev: EventRow) {
-  const look = lookupsOf(db)
-  const type = typeOf(db, ev.eventTypeId)
-  const studio = db
+async function detailOf(db: DB, user: SessionUser, ev: EventRow) {
+  const look = await lookupsOf(db)
+  const type = await typeOf(db, ev.eventTypeId)
+  const studio = (await db
     .select()
     .from(studios)
     .where(eq(studios.id, ev.studioId))
-    .get()!
-  const pkg = packageOf(db, ev.id)
-  const stages = stagesOf(db, ev.id)
-  const records = recordsOf(db, ev.id)
+    .get())!
+  const pkg = await packageOf(db, ev.id)
+  const stages = await stagesOf(db, ev.id)
+  const records = await recordsOf(db, ev.id)
   const mine = isRequester(user, ev)
   const isSponsor = ev.sponsorId === user.id
 
-  const lines = db
+  const lines = await db
     .select({
       id: equipmentLines.id,
       equipmentTypeId: equipmentLines.equipmentTypeId,
@@ -392,22 +402,26 @@ function detailOf(db: DB, user: SessionUser, ev: EventRow) {
     : []
   const assetTags = new Map(
     unitIds.length
-      ? db
-          .select({ id: equipmentUnits.id, assetTag: equipmentUnits.assetTag })
-          .from(equipmentUnits)
-          .where(inArray(equipmentUnits.id, unitIds))
-          .all()
-          .map((u) => [u.id, u.assetTag])
+      ? (
+          await db
+            .select({
+              id: equipmentUnits.id,
+              assetTag: equipmentUnits.assetTag,
+            })
+            .from(equipmentUnits)
+            .where(inArray(equipmentUnits.id, unitIds))
+            .all()
+        ).map((u) => [u.id, u.assetTag])
       : []
   )
 
   const holdRows = can(user, "hold.view", { own: mine, studioId: ev.studioId })
-    ? db.select().from(holds).where(eq(holds.eventId, ev.id)).all()
+    ? await db.select().from(holds).where(eq(holds.eventId, ev.id)).all()
     : []
   const overrides = can(user, "event.override_policy", {
     studioId: ev.studioId,
   })
-    ? db
+    ? await db
         .select()
         .from(policyOverrides)
         .where(eq(policyOverrides.eventId, ev.id))
@@ -443,10 +457,10 @@ function detailOf(db: DB, user: SessionUser, ev: EventRow) {
     studio: { id: studio.id, name: studio.name, location: studio.location },
     requester: look.users.get(ev.requesterId)!,
     sponsor: ev.sponsorId ? look.users.get(ev.sponsorId)! : null,
-    participants: participantIds(db, ev.id)
+    participants: (await participantIds(db, ev.id))
       .map((id) => look.users.get(id))
       .filter((u): u is { id: string; displayName: string } => !!u),
-    days: daysOf(db, ev.id).map((d) => ({
+    days: (await daysOf(db, ev.id)).map((d) => ({
       day: d.day,
       startTime: d.startTime,
       endTime: d.endTime,
@@ -508,7 +522,7 @@ function detailOf(db: DB, user: SessionUser, ev: EventRow) {
       at: o.at,
     })),
     resultPackage: pkg ? { id: pkg.id, status: pkg.status } : null,
-    nextAction: nextActionFor(db, ev),
+    nextAction: await nextActionFor(db, ev),
     can: {
       edit:
         EDITABLE.includes(ev.state) &&
@@ -564,10 +578,14 @@ function detailOf(db: DB, user: SessionUser, ev: EventRow) {
 }
 
 /** Notifies the whole event audience after a change (BR-006-11, F-010 EVENT_CHANGED). */
-function notifyChanged(db: DB, ev: EventRow, before: EventRow["state"]): void {
-  notify(db, {
+async function notifyChanged(
+  db: DB,
+  ev: EventRow,
+  before: EventRow["state"]
+): Promise<void> {
+  await notify(db, {
     code: "EVENT_CHANGED",
-    to: eventAudience(db, ev.id, [
+    to: await eventAudience(db, ev.id, [
       "requester",
       "participants",
       "sponsor",
@@ -586,7 +604,7 @@ function notifyChanged(db: DB, ev: EventRow, before: EventRow["state"]): void {
 // ── Routes ────────────────────────────────────────────────────────────
 
 export const routes = new Hono<AppEnv>()
-  .get("/", v("query", listQuery), (c) => {
+  .get("/", v("query", listQuery), async (c) => {
     const user = requireUser(c)
     const db = c.var.db
     const q = c.req.valid("query")
@@ -594,13 +612,11 @@ export const routes = new Hono<AppEnv>()
     if (q.scope === "all") {
       if (!hasUnscoped(user, "event.view")) throw forbidden()
       const excluded = deniedStudios(user, "event.view")
-      candidates = db
-        .select()
-        .from(events)
-        .all()
-        .filter((e) => !excluded.includes(e.studioId))
+      candidates = (await db.select().from(events).all()).filter(
+        (e) => !excluded.includes(e.studioId)
+      )
     } else if (q.scope === "sponsoring") {
-      candidates = db
+      candidates = await db
         .select()
         .from(events)
         .where(eq(events.sponsorId, user.id))
@@ -610,50 +626,52 @@ export const routes = new Hono<AppEnv>()
       const ids = studiosFor(user, "event.view")
       if (hasUnscoped(user, "event.view")) {
         const excluded = deniedStudios(user, "event.view")
-        candidates = db
-          .select()
-          .from(events)
-          .all()
-          .filter((e) => !excluded.includes(e.studioId))
+        candidates = (await db.select().from(events).all()).filter(
+          (e) => !excluded.includes(e.studioId)
+        )
       } else
         candidates = ids.length
-          ? db.select().from(events).where(inArray(events.studioId, ids)).all()
+          ? await db
+              .select()
+              .from(events)
+              .where(inArray(events.studioId, ids))
+              .all()
           : []
     } else {
       const partOf = new Set(
-        db
-          .select({ eventId: eventParticipants.eventId })
-          .from(eventParticipants)
-          .where(eq(eventParticipants.userId, user.id))
-          .all()
-          .map((r) => r.eventId)
+        (
+          await db
+            .select({ eventId: eventParticipants.eventId })
+            .from(eventParticipants)
+            .where(eq(eventParticipants.userId, user.id))
+            .all()
+        ).map((r) => r.eventId)
       )
-      candidates = db
-        .select()
-        .from(events)
-        .all()
-        .filter((e) => e.requesterId === user.id || partOf.has(e.id))
+      candidates = (await db.select().from(events).all()).filter(
+        (e) => e.requesterId === user.id || partOf.has(e.id)
+      )
     }
-    const look = lookupsOf(db)
-    const rows = candidates
-      .filter(
-        (e) =>
-          (q.state ? e.state === q.state : true) && canViewEvent(db, user, e)
-      )
-      .map((e) => summaryOf(db, e, look))
-      .sort((a, b) =>
-        (a.days[0]?.startsAt ?? "").localeCompare(b.days[0]?.startsAt ?? "")
-      )
+    const look = await lookupsOf(db)
+    const visible: EventRow[] = []
+    for (const e of candidates) {
+      if (q.state && e.state !== q.state) continue
+      if (await canViewEvent(db, user, e)) visible.push(e)
+    }
+    const rows = []
+    for (const e of visible) rows.push(await summaryOf(db, e, look))
+    rows.sort((a, b) =>
+      (a.days[0]?.startsAt ?? "").localeCompare(b.days[0]?.startsAt ?? "")
+    )
     return c.json(rows)
   })
-  .post("/check", v("json", checkBody), (c) => {
+  .post("/check", v("json", checkBody), async (c) => {
     const user = requireUser(c)
     const db = c.var.db
     const body = c.req.valid("json")
     const requesterId = body.excludeEventId
-      ? visibleEvent(db, user, body.excludeEventId).requesterId
+      ? (await visibleEvent(db, user, body.excludeEventId)).requesterId
       : user.id
-    const issues = checkDraft(
+    const issues = await checkDraft(
       db,
       {
         requesterId,
@@ -667,48 +685,51 @@ export const routes = new Hono<AppEnv>()
     )
     return c.json({ issues })
   })
-  .post("/", v("json", draftBody), (c) => {
+  .post("/", v("json", draftBody), async (c) => {
     const user = requireUser(c)
     if (!allowed(user, "event.create", null, true)) throw forbidden()
     const db = c.var.db
     const body = c.req.valid("json")
-    const { intervals, lines, participants } = normalise(db, body, user.id)
-    const id = db.transaction(() => {
-      const ev = db
-        .insert(events)
-        .values({
-          title: body.title,
-          description: body.description,
-          eventTypeId: body.eventTypeId,
-          studioId: body.studioId,
-          requesterId: user.id,
-          sponsorId: body.sponsorId,
-          state: "Draft",
-        })
-        .returning()
-        .get()
-      writeRows(db, ev.id, intervals, lines, participants)
-      audit(db, {
-        actorId: user.id,
-        action: "event.create",
-        entityType: "event",
-        entityId: ev.id,
-        after: { title: ev.title, state: "Draft" },
+    const { intervals, lines, participants } = await normalise(
+      db,
+      body,
+      user.id
+    )
+    const ev = await db
+      .insert(events)
+      .values({
+        title: body.title,
+        description: body.description,
+        eventTypeId: body.eventTypeId,
+        studioId: body.studioId,
+        requesterId: user.id,
+        sponsorId: body.sponsorId,
+        state: "Draft",
       })
-      return ev.id
+      .returning()
+      .get()
+    await writeRows(db, ev.id, intervals, lines, participants)
+    await audit(db, {
+      actorId: user.id,
+      action: "event.create",
+      entityType: "event",
+      entityId: ev.id,
+      after: { title: ev.title, state: "Draft" },
     })
-    return c.json(detailOf(db, user, getEvent(db, id)!), 201)
+    return c.json(await detailOf(db, user, (await getEvent(db, ev.id))!), 201)
   })
-  .get("/:id", (c) => {
+  .get("/:id", async (c) => {
     const user = requireUser(c)
     const db = c.var.db
-    return c.json(detailOf(db, user, visibleEvent(db, user, c.req.param("id"))))
+    return c.json(
+      await detailOf(db, user, await visibleEvent(db, user, c.req.param("id")))
+    )
   })
-  .put("/:id", v("json", editBody), (c) => {
+  .put("/:id", v("json", editBody), async (c) => {
     const user = requireUser(c)
     const db = c.var.db
     const body = c.req.valid("json")
-    const ev = visibleEvent(db, user, c.req.param("id"))
+    const ev = await visibleEvent(db, user, c.req.param("id"))
     if (!allowed(user, "event.edit", ev.studioId, isRequester(user, ev)))
       throw forbidden()
     requireState(ev, EDITABLE)
@@ -718,7 +739,7 @@ export const routes = new Hono<AppEnv>()
       !allowed(user, "event.edit", body.studioId, isRequester(user, ev))
     )
       throw forbidden()
-    const { intervals, lines, participants } = normalise(
+    const { intervals, lines, participants } = await normalise(
       db,
       body,
       ev.requesterId
@@ -732,26 +753,24 @@ export const routes = new Hono<AppEnv>()
     }
 
     if (ev.state === "Draft") {
-      const out = db.transaction(() => {
-        db.update(events)
-          .set({ ...patch, updatedAt: now() })
-          .where(eq(events.id, ev.id))
-          .run()
-        writeRows(db, ev.id, intervals, lines, participants)
-        audit(db, {
-          actorId: user.id,
-          action: "event.edit",
-          entityType: "event",
-          entityId: ev.id,
-          before: { state: "Draft" },
-        })
-        return detailOf(db, user, getEvent(db, ev.id)!)
+      await db
+        .update(events)
+        .set({ ...patch, updatedAt: now() })
+        .where(eq(events.id, ev.id))
+        .run()
+      await writeRows(db, ev.id, intervals, lines, participants)
+      await audit(db, {
+        actorId: user.id,
+        action: "event.edit",
+        entityType: "event",
+        entityId: ev.id,
+        before: { state: "Draft" },
       })
-      return c.json(out)
+      return c.json(await detailOf(db, user, (await getEvent(db, ev.id))!))
     }
 
     // BR-006-11: classify the change against the stored request.
-    const old = draftOf(db, ev.id)
+    const old = await draftOf(db, ev.id)
     const oldQty = new Map<string, number>()
     for (const l of old.lines)
       oldQty.set(
@@ -774,290 +793,292 @@ export const routes = new Hono<AppEnv>()
         `Cannot change an event that is ${ev.state}.`
       )
 
-    const out = db.transaction(() => {
-      const issues = checkDraft(
+    const issues = await checkDraft(
+      db,
+      draftInput(ev.requesterId, body, lines),
+      ev.id
+    )
+    if (hasHard(issues)) throw issuesConflict(issues)
+    const soft = softCodes(issues)
+    const justification = body.justification?.trim() ?? ""
+    if (soft.length && !justification) throw issuesConflict(issues)
+    // A request sent back for approval gets a fresh decision clock (BR-006-11); the staff clock runs from sponsorDecidedAt.
+    const clock =
+      action === "change_approval"
+        ? { submittedAt: now(), sponsorDecidedAt: null }
+        : action && target === "SponsorApproved"
+          ? { sponsorDecidedAt: now() }
+          : {}
+    const fields = {
+      ...patch,
+      ...clock,
+      overrideRequested: soft,
+      overrideJustification: soft.length ? justification : "",
+      needsReview: false,
+      reviewReasons: [],
+    }
+    let updated: EventRow
+    if (action)
+      updated = await moveEvent(
         db,
-        draftInput(ev.requesterId, body, lines),
-        ev.id
+        ev,
+        action,
+        user.id,
+        fields,
+        "request changed"
       )
-      if (hasHard(issues)) throw issuesConflict(issues)
-      const soft = softCodes(issues)
-      const justification = body.justification?.trim() ?? ""
-      if (soft.length && !justification) throw issuesConflict(issues)
-      // A request sent back for approval gets a fresh decision clock (BR-006-11); the staff clock runs from sponsorDecidedAt.
-      const clock =
-        action === "change_approval"
-          ? { submittedAt: now(), sponsorDecidedAt: null }
-          : action && target === "SponsorApproved"
-            ? { sponsorDecidedAt: now() }
-            : {}
-      const fields = {
-        ...patch,
-        ...clock,
-        overrideRequested: soft,
-        overrideJustification: soft.length ? justification : "",
-        needsReview: false,
-        reviewReasons: [],
-      }
-      let updated: EventRow
-      if (action)
-        updated = moveEvent(db, ev, action, user.id, fields, "request changed")
-      else {
-        updated = db
-          .update(events)
-          .set({ ...fields, sequence: ev.sequence + 1, updatedAt: now() })
-          .where(eq(events.id, ev.id))
-          .returning()
-          .get()
-        audit(db, {
-          actorId: user.id,
-          action: "event.edit",
-          entityType: "event",
-          entityId: ev.id,
-          before: { state: ev.state },
-          after: { state: updated.state },
-        })
-      }
-      writeRows(db, ev.id, intervals, lines, participants)
-      if (ev.state === "Confirmed" && updated.state !== "Confirmed")
-        cancelScheduledReminders(db, ev.id)
-      notifyChanged(db, updated, ev.state)
-      return detailOf(db, user, updated)
-    })
-    return c.json(out)
-  })
-  .delete("/:id", (c) => {
-    const user = requireUser(c)
-    const db = c.var.db
-    const ev = visibleEvent(db, user, c.req.param("id"))
-    if (!isRequester(user, ev)) throw forbidden()
-    requireState(ev, ["Draft"])
-    db.transaction(() => {
-      db.delete(events).where(eq(events.id, ev.id)).run()
-      audit(db, {
+    else {
+      updated = await db
+        .update(events)
+        .set({ ...fields, sequence: ev.sequence + 1, updatedAt: now() })
+        .where(eq(events.id, ev.id))
+        .returning()
+        .get()
+      await audit(db, {
         actorId: user.id,
-        action: "event.delete",
+        action: "event.edit",
         entityType: "event",
         entityId: ev.id,
-        before: { title: ev.title },
+        before: { state: ev.state },
+        after: { state: updated.state },
       })
+    }
+    await writeRows(db, ev.id, intervals, lines, participants)
+    if (ev.state === "Confirmed" && updated.state !== "Confirmed")
+      await cancelScheduledReminders(db, ev.id)
+    await notifyChanged(db, updated, ev.state)
+    return c.json(await detailOf(db, user, updated))
+  })
+  .delete("/:id", async (c) => {
+    const user = requireUser(c)
+    const db = c.var.db
+    const ev = await visibleEvent(db, user, c.req.param("id"))
+    if (!isRequester(user, ev)) throw forbidden()
+    requireState(ev, ["Draft"])
+    await db.delete(events).where(eq(events.id, ev.id)).run()
+    await audit(db, {
+      actorId: user.id,
+      action: "event.delete",
+      entityType: "event",
+      entityId: ev.id,
+      before: { title: ev.title },
     })
     return c.json({ ok: true as const })
   })
-  .post("/:id/submit", v("json", submitBody), (c) => {
+  .post("/:id/submit", v("json", submitBody), async (c) => {
     const user = requireUser(c)
     const db = c.var.db
     const body = c.req.valid("json")
-    const ev = visibleEvent(db, user, c.req.param("id"))
+    const ev = await visibleEvent(db, user, c.req.param("id"))
     if (!isRequester(user, ev)) throw forbidden()
-    const out = db.transaction(() => {
-      // BR-006-04: the checks and the state change share one transaction.
-      const current = getEvent(db, ev.id)!
-      requireState(current, ["Draft"])
-      const issues = checkDraft(db, draftOf(db, ev.id), ev.id)
-      if (hasHard(issues)) throw issuesConflict(issues)
-      const soft = softCodes(issues)
-      const justification = body.justification?.trim() ?? ""
-      if (soft.length && !justification) throw issuesConflict(issues)
-      const updated = moveEvent(db, current, "submit", user.id, {
-        submittedAt: now(),
-        overrideRequested: soft,
-        overrideJustification: soft.length ? justification : "",
-      })
-      notify(db, {
-        code: "EVENT_SUBMITTED",
-        to: [current.requesterId],
-        eventId: current.id,
-        subject: `Request submitted: ${current.title}`,
-        body: "Your request has been sent to the sponsor for approval.",
-        key: `EVENT_SUBMITTED:${current.id}:requester`,
-      })
-      notify(db, {
-        code: "EVENT_SUBMITTED",
-        to: current.sponsorId ? [current.sponsorId] : [],
-        eventId: current.id,
-        subject: `Approval needed: ${current.title}`,
-        body: soft.length
-          ? `Justification given for: ${soft.join(", ")}.\n${justification}`
-          : "Please approve or reject this request.",
-        key: `EVENT_SUBMITTED:${current.id}:sponsor`,
-      })
-      return detailOf(db, user, updated)
+    // BR-006-04: the checks and the state change share one transaction.
+    const current = (await getEvent(db, ev.id))!
+    requireState(current, ["Draft"])
+    const issues = await checkDraft(db, await draftOf(db, ev.id), ev.id)
+    if (hasHard(issues)) throw issuesConflict(issues)
+    const soft = softCodes(issues)
+    const justification = body.justification?.trim() ?? ""
+    if (soft.length && !justification) throw issuesConflict(issues)
+    const updated = await moveEvent(db, current, "submit", user.id, {
+      submittedAt: now(),
+      overrideRequested: soft,
+      overrideJustification: soft.length ? justification : "",
     })
-    return c.json(out)
+    await notify(db, {
+      code: "EVENT_SUBMITTED",
+      to: [current.requesterId],
+      eventId: current.id,
+      subject: `Request submitted: ${current.title}`,
+      body: "Your request has been sent to the sponsor for approval.",
+      key: `EVENT_SUBMITTED:${current.id}:requester`,
+    })
+    await notify(db, {
+      code: "EVENT_SUBMITTED",
+      to: current.sponsorId ? [current.sponsorId] : [],
+      eventId: current.id,
+      subject: `Approval needed: ${current.title}`,
+      body: soft.length
+        ? `Justification given for: ${soft.join(", ")}.\n${justification}`
+        : "Please approve or reject this request.",
+      key: `EVENT_SUBMITTED:${current.id}:sponsor`,
+    })
+    return c.json(await detailOf(db, user, updated))
   })
-  .post("/:id/sponsor-decision", v("json", sponsorBody), (c) => {
+  .post("/:id/sponsor-decision", v("json", sponsorBody), async (c) => {
     const user = requireUser(c)
     const db = c.var.db
     const body = c.req.valid("json")
-    const ev = visibleEvent(db, user, c.req.param("id"))
+    const ev = await visibleEvent(db, user, c.req.param("id"))
     if (ev.sponsorId !== user.id || isRequester(user, ev))
       throw forbidden("Only the sponsor can decide on this request.")
     if (!allowed(user, "event.sponsor_decide", ev.studioId, true))
       throw forbidden()
     const note = body.note.trim()
-    const out = db.transaction(() => {
-      const current = getEvent(db, ev.id)!
-      requireState(current, ["Submitted"])
-      if (body.decision === "approve") {
-        // BR-006-03: hard checks run again on approval.
-        const issues = checkDraft(db, draftOf(db, current.id), current.id)
-        if (hasHard(issues)) throw issuesConflict(issues)
-        const updated = moveEvent(db, current, "sponsor_approve", user.id, {
-          sponsorDecidedAt: now(),
-          decisionNote: note,
-        })
-        notify(db, {
-          code: "EVENT_SPONSOR_APPROVED",
-          to: eventAudience(db, current.id, ["requester"]),
-          eventId: current.id,
-          subject: `Sponsor approved: ${current.title}`,
-          body: note || "Waiting for studio staff to confirm.",
-          key: `EVENT_SPONSOR_APPROVED:${current.id}:requester`,
-        })
-        notify(db, {
-          code: "EVENT_SPONSOR_APPROVED",
-          to: eventAudience(db, current.id, ["studio_staff"]),
-          eventId: current.id,
-          subject: `Confirmation needed: ${current.title}`,
-          body: "The sponsor has approved this request.",
-          key: `EVENT_SPONSOR_APPROVED:${current.id}:staff`,
-        })
-        return detailOf(db, user, updated)
-      }
+    const current = (await getEvent(db, ev.id))!
+    requireState(current, ["Submitted"])
+    if (body.decision === "approve") {
+      // BR-006-03: hard checks run again on approval.
+      const issues = await checkDraft(
+        db,
+        await draftOf(db, current.id),
+        current.id
+      )
+      if (hasHard(issues)) throw issuesConflict(issues)
+      const updated = await moveEvent(db, current, "sponsor_approve", user.id, {
+        sponsorDecidedAt: now(),
+        decisionNote: note,
+      })
+      await notify(db, {
+        code: "EVENT_SPONSOR_APPROVED",
+        to: await eventAudience(db, current.id, ["requester"]),
+        eventId: current.id,
+        subject: `Sponsor approved: ${current.title}`,
+        body: note || "Waiting for studio staff to confirm.",
+        key: `EVENT_SPONSOR_APPROVED:${current.id}:requester`,
+      })
+      await notify(db, {
+        code: "EVENT_SPONSOR_APPROVED",
+        to: await eventAudience(db, current.id, ["studio_staff"]),
+        eventId: current.id,
+        subject: `Confirmation needed: ${current.title}`,
+        body: "The sponsor has approved this request.",
+        key: `EVENT_SPONSOR_APPROVED:${current.id}:staff`,
+      })
+      return c.json(await detailOf(db, user, updated))
+    }
+    if (!note)
+      throw badRequest(
+        "NOTE_REQUIRED",
+        "A reason is required to reject a request."
+      )
+    const updated = await moveEvent(
+      db,
+      current,
+      "sponsor_reject",
+      user.id,
+      { sponsorDecidedAt: now(), decisionNote: note },
+      note
+    )
+    await notify(db, {
+      code: "EVENT_REJECTED",
+      to: await eventAudience(db, current.id, ["requester", "sponsor"]),
+      eventId: current.id,
+      subject: `Rejected: ${current.title}`,
+      body: note,
+      key: `EVENT_REJECTED:${current.id}`,
+    })
+    return c.json(await detailOf(db, user, updated))
+  })
+  .post("/:id/staff-decision", v("json", staffBody), async (c) => {
+    const user = requireUser(c)
+    const db = c.var.db
+    const body = c.req.valid("json")
+    const ev = await visibleEvent(db, user, c.req.param("id"))
+    if (isRequester(user, ev))
+      throw forbidden("You cannot decide on your own request.")
+    if (!allowed(user, "event.staff_decide", ev.studioId)) throw forbidden()
+    const note = body.note.trim()
+    const current = (await getEvent(db, ev.id))!
+    requireState(current, ["SponsorApproved"])
+    if (body.decision === "reject") {
       if (!note)
         throw badRequest(
           "NOTE_REQUIRED",
           "A reason is required to reject a request."
         )
-      const updated = moveEvent(
+      const updated = await moveEvent(
         db,
         current,
-        "sponsor_reject",
+        "staff_reject",
         user.id,
-        { sponsorDecidedAt: now(), decisionNote: note },
+        { staffDecidedAt: now(), decisionNote: note },
         note
       )
-      notify(db, {
+      await notify(db, {
         code: "EVENT_REJECTED",
-        to: eventAudience(db, current.id, ["requester", "sponsor"]),
+        to: await eventAudience(db, current.id, ["requester", "sponsor"]),
         eventId: current.id,
         subject: `Rejected: ${current.title}`,
         body: note,
         key: `EVENT_REJECTED:${current.id}`,
       })
-      return detailOf(db, user, updated)
-    })
-    return c.json(out)
-  })
-  .post("/:id/staff-decision", v("json", staffBody), (c) => {
-    const user = requireUser(c)
-    const db = c.var.db
-    const body = c.req.valid("json")
-    const ev = visibleEvent(db, user, c.req.param("id"))
-    if (isRequester(user, ev))
-      throw forbidden("You cannot decide on your own request.")
-    if (!allowed(user, "event.staff_decide", ev.studioId)) throw forbidden()
-    const note = body.note.trim()
-    const out = db.transaction(() => {
-      const current = getEvent(db, ev.id)!
-      requireState(current, ["SponsorApproved"])
-      if (body.decision === "reject") {
-        if (!note)
-          throw badRequest(
-            "NOTE_REQUIRED",
-            "A reason is required to reject a request."
-          )
-        const updated = moveEvent(
-          db,
-          current,
-          "staff_reject",
-          user.id,
-          { staffDecidedAt: now(), decisionNote: note },
-          note
-        )
-        notify(db, {
-          code: "EVENT_REJECTED",
-          to: eventAudience(db, current.id, ["requester", "sponsor"]),
-          eventId: current.id,
-          subject: `Rejected: ${current.title}`,
-          body: note,
-          key: `EVENT_REJECTED:${current.id}`,
-        })
-        return detailOf(db, user, updated)
-      }
+      return c.json(await detailOf(db, user, updated))
+    }
 
-      // BR-006-06: hard rules block; soft rules need a reason recorded as a policy override.
-      const issues = checkDraft(db, draftOf(db, current.id), current.id)
-      if (hasHard(issues)) throw issuesConflict(issues)
-      const needed = [
-        ...new Set<SoftPolicyCode>([
-          ...current.overrideRequested,
-          ...softCodes(issues),
-        ]),
-      ]
-      const reason = body.overrideReason?.trim() ?? ""
-      if (needed.length && !reason)
-        throw conflict(
-          "OVERRIDE_REASON_REQUIRED",
-          "Give a reason to approve the requested policy overrides.",
-          {
-            codes: needed,
-          }
-        )
-      for (const code of needed) {
-        db.insert(policyOverrides)
-          .values({
-            eventId: current.id,
-            ruleCode: code,
-            actorId: user.id,
-            reason,
-          })
-          .run()
-        audit(db, {
+    // BR-006-06: hard rules block; soft rules need a reason recorded as a policy override.
+    const issues = await checkDraft(
+      db,
+      await draftOf(db, current.id),
+      current.id
+    )
+    if (hasHard(issues)) throw issuesConflict(issues)
+    const needed = [
+      ...new Set<SoftPolicyCode>([
+        ...current.overrideRequested,
+        ...softCodes(issues),
+      ]),
+    ]
+    const reason = body.overrideReason?.trim() ?? ""
+    if (needed.length && !reason)
+      throw conflict(
+        "OVERRIDE_REASON_REQUIRED",
+        "Give a reason to approve the requested policy overrides.",
+        {
+          codes: needed,
+        }
+      )
+    for (const code of needed) {
+      await db
+        .insert(policyOverrides)
+        .values({
+          eventId: current.id,
+          ruleCode: code,
           actorId: user.id,
-          action: "policy.override",
-          entityType: "event",
-          entityId: current.id,
-          after: { rule: code },
           reason,
         })
-      }
-      const updated = moveEvent(
-        db,
-        current,
-        "staff_confirm",
-        user.id,
-        {
-          staffDecidedAt: now(),
-          decisionNote: note,
-          needsReview: false,
-          reviewReasons: [],
-        },
-        reason
-      )
-      notifyTasksOpened(db, updated, planEventStages(db, updated))
-      notify(db, {
-        code: "EVENT_CONFIRMED",
-        to: eventAudience(db, current.id, [
-          "requester",
-          "participants",
-          "sponsor",
-        ]),
-        eventId: current.id,
-        subject: `Confirmed: ${current.title}`,
-        body: note || "Your studio booking is confirmed.",
-        key: `EVENT_CONFIRMED:${current.id}:${updated.sequence}`,
+        .run()
+      await audit(db, {
+        actorId: user.id,
+        action: "policy.override",
+        entityType: "event",
+        entityId: current.id,
+        after: { rule: code },
+        reason,
       })
-      return detailOf(db, user, updated)
+    }
+    const updated = await moveEvent(
+      db,
+      current,
+      "staff_confirm",
+      user.id,
+      {
+        staffDecidedAt: now(),
+        decisionNote: note,
+        needsReview: false,
+        reviewReasons: [],
+      },
+      reason
+    )
+    await notifyTasksOpened(db, updated, await planEventStages(db, updated))
+    await notify(db, {
+      code: "EVENT_CONFIRMED",
+      to: await eventAudience(db, current.id, [
+        "requester",
+        "participants",
+        "sponsor",
+      ]),
+      eventId: current.id,
+      subject: `Confirmed: ${current.title}`,
+      body: note || "Your studio booking is confirmed.",
+      key: `EVENT_CONFIRMED:${current.id}:${updated.sequence}`,
     })
-    return c.json(out)
+    return c.json(await detailOf(db, user, updated))
   })
-  .post("/:id/cancel", v("json", reasonBody), (c) => {
+  .post("/:id/cancel", v("json", reasonBody), async (c) => {
     const user = requireUser(c)
     const db = c.var.db
     const body = c.req.valid("json")
-    const ev = visibleEvent(db, user, c.req.param("id"))
+    const ev = await visibleEvent(db, user, c.req.param("id"))
     const own = isRequester(user, ev) || ev.sponsorId === user.id
     if (!allowed(user, "event.cancel", ev.studioId, own)) throw forbidden()
     const reason = body.reason.trim()
@@ -1066,40 +1087,37 @@ export const routes = new Hono<AppEnv>()
         "REASON_REQUIRED",
         "A reason is required to cancel as staff."
       )
-    const out = db.transaction(() => {
-      const current = getEvent(db, ev.id)!
-      requireState(current, CANCELLABLE)
-      const updated = moveEvent(
-        db,
-        current,
-        "cancel",
-        user.id,
-        { cancelReason: reason },
-        reason
-      )
-      cancelOpenStages(db, current.id)
-      notify(db, {
-        code: "EVENT_CANCELLED",
-        to: eventAudience(db, current.id, [
-          "requester",
-          "participants",
-          "sponsor",
-          "studio_staff",
-        ]),
-        eventId: current.id,
-        subject: `Cancelled: ${current.title}`,
-        body: reason || "The request was cancelled.",
-        key: `EVENT_CANCELLED:${current.id}`,
-      })
-      return detailOf(db, user, updated)
+    const current = (await getEvent(db, ev.id))!
+    requireState(current, CANCELLABLE)
+    const updated = await moveEvent(
+      db,
+      current,
+      "cancel",
+      user.id,
+      { cancelReason: reason },
+      reason
+    )
+    await cancelOpenStages(db, current.id)
+    await notify(db, {
+      code: "EVENT_CANCELLED",
+      to: await eventAudience(db, current.id, [
+        "requester",
+        "participants",
+        "sponsor",
+        "studio_staff",
+      ]),
+      eventId: current.id,
+      subject: `Cancelled: ${current.title}`,
+      body: reason || "The request was cancelled.",
+      key: `EVENT_CANCELLED:${current.id}`,
     })
-    return c.json(out)
+    return c.json(await detailOf(db, user, updated))
   })
-  .post("/:id/resolve-review", v("json", reasonBody), (c) => {
+  .post("/:id/resolve-review", v("json", reasonBody), async (c) => {
     const user = requireUser(c)
     const db = c.var.db
     const body = c.req.valid("json")
-    const ev = visibleEvent(db, user, c.req.param("id"))
+    const ev = await visibleEvent(db, user, c.req.param("id"))
     if (isRequester(user, ev))
       throw forbidden("You cannot resolve a review on your own request.")
     if (!allowed(user, "event.staff_decide", ev.studioId)) throw forbidden()
@@ -1113,27 +1131,25 @@ export const routes = new Hono<AppEnv>()
       )
     if (
       ev.reviewReasons.includes("HOLD_ACTIVE") &&
-      hasActiveHold(db, ev.requesterId)
+      (await hasActiveHold(db, ev.requesterId))
     )
       throw conflict(
         "HOLD_ACTIVE",
         "The requester still has an active hold. Clear the hold or cancel the request."
       )
-    const out = db.transaction(() => {
-      db.update(events)
-        .set({ needsReview: false, reviewReasons: [], updatedAt: now() })
-        .where(eq(events.id, ev.id))
-        .run()
-      audit(db, {
-        actorId: user.id,
-        action: "event.resolve_review",
-        entityType: "event",
-        entityId: ev.id,
-        before: { reviewReasons: ev.reviewReasons },
-        after: { reviewReasons: [] },
-        reason,
-      })
-      return detailOf(db, user, getEvent(db, ev.id)!)
+    await db
+      .update(events)
+      .set({ needsReview: false, reviewReasons: [], updatedAt: now() })
+      .where(eq(events.id, ev.id))
+      .run()
+    await audit(db, {
+      actorId: user.id,
+      action: "event.resolve_review",
+      entityType: "event",
+      entityId: ev.id,
+      before: { reviewReasons: ev.reviewReasons },
+      after: { reviewReasons: [] },
+      reason,
     })
-    return c.json(out)
+    return c.json(await detailOf(db, user, (await getEvent(db, ev.id))!))
   })

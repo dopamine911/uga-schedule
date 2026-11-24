@@ -50,7 +50,7 @@ const emptyCounts = (): Counts => ({
 })
 
 /** Per-type counts by status (retired units are excluded from every count). */
-function countsByType(db: DB): Map<string, Counts> {
+async function countsByType(db: DB): Promise<Map<string, Counts>> {
   const out = new Map<string, Counts>()
   const get = (typeId: string) => {
     let c = out.get(typeId)
@@ -60,7 +60,7 @@ function countsByType(db: DB): Map<string, Counts> {
     }
     return c
   }
-  const units = db
+  const units = await db
     .select({
       typeId: equipmentUnits.typeId,
       status: equipmentUnits.status,
@@ -75,7 +75,7 @@ function countsByType(db: DB): Map<string, Counts> {
     c[r.status] += r.n
     c.total += r.n
   }
-  for (const b of db.select().from(bulkStock).all()) {
+  for (const b of await db.select().from(bulkStock).all()) {
     const c = get(b.typeId)
     c.available = b.qtyAvailable
     c.in_use = b.qtyInUse
@@ -89,8 +89,8 @@ function countsByType(db: DB): Map<string, Counts> {
 }
 
 /** Equipment type joined with its class and that class's minimum level. */
-function loadTypes(db: DB, where?: SQL) {
-  return db
+async function loadTypes(db: DB, where?: SQL) {
+  return await db
     .select({ t: equipmentTypes, cls: equipmentClasses, level: levels })
     .from(equipmentTypes)
     .innerJoin(
@@ -139,9 +139,9 @@ const TRANSITIONS: Partial<Record<UnitStatus, readonly UnitStatus[]>> = {
 type BulkBucket = "available" | "damaged" | "in_repair" | "lost"
 
 /** A type has stock or history: its tracking mode is locked (BR-003-02). */
-function hasStock(db: DB, typeId: string): boolean {
+async function hasStock(db: DB, typeId: string): Promise<boolean> {
   if (
-    db
+    await db
       .select({ id: equipmentUnits.id })
       .from(equipmentUnits)
       .where(eq(equipmentUnits.typeId, typeId))
@@ -149,14 +149,14 @@ function hasStock(db: DB, typeId: string): boolean {
   )
     return true
   if (
-    db
+    await db
       .select({ typeId: statusHistory.typeId })
       .from(statusHistory)
       .where(eq(statusHistory.typeId, typeId))
       .get()
   )
     return true
-  const b = db
+  const b = await db
     .select()
     .from(bulkStock)
     .where(eq(bulkStock.typeId, typeId))
@@ -167,8 +167,8 @@ function hasStock(db: DB, typeId: string): boolean {
   )
 }
 
-function classOf(db: DB, id: string) {
-  const c = db
+async function classOf(db: DB, id: string) {
+  const c = await db
     .select()
     .from(equipmentClasses)
     .where(eq(equipmentClasses.id, id))
@@ -177,8 +177,8 @@ function classOf(db: DB, id: string) {
   return c
 }
 
-function typeOf(db: DB, id: string) {
-  const t = db
+async function typeOf(db: DB, id: string) {
+  const t = await db
     .select()
     .from(equipmentTypes)
     .where(eq(equipmentTypes.id, id))
@@ -187,8 +187,8 @@ function typeOf(db: DB, id: string) {
   return t
 }
 
-function unitOf(db: DB, id: string) {
-  const u = db
+async function unitOf(db: DB, id: string) {
+  const u = await db
     .select()
     .from(equipmentUnits)
     .where(eq(equipmentUnits.id, id))
@@ -197,17 +197,20 @@ function unitOf(db: DB, id: string) {
   return u
 }
 
-function levelOf(db: DB, id: string) {
-  const l = db.select().from(levels).where(eq(levels.id, id)).get()
+async function levelOf(db: DB, id: string) {
+  const l = await db.select().from(levels).where(eq(levels.id, id)).get()
   if (!l) throw badRequest("UNKNOWN_LEVEL", "Unknown level.")
   return l
 }
 
 /** Re-checks open events that reserve any of the given types (BR-003-08, F-006 review). */
-function recheckTypes(db: DB, typeIds: readonly string[]): string[] {
+async function recheckTypes(
+  db: DB,
+  typeIds: readonly string[]
+): Promise<string[]> {
   const flagged: string[] = []
   for (const equipmentTypeId of new Set(typeIds))
-    flagged.push(...recheckEvents(db, { equipmentTypeId }))
+    flagged.push(...(await recheckEvents(db, { equipmentTypeId })))
   return flagged
 }
 
@@ -260,9 +263,9 @@ const availabilityBody = z.object({
 })
 
 export const routes = new Hono<AppEnv>()
-  .get("/classes", (c) => {
+  .get("/classes", async (c) => {
     requireUser(c)
-    const rows = c.var.db
+    const rows = await c.var.db
       .select({ cls: equipmentClasses, level: levels })
       .from(equipmentClasses)
       .innerJoin(levels, eq(levels.id, equipmentClasses.minLevelId))
@@ -277,101 +280,101 @@ export const routes = new Hono<AppEnv>()
       }))
     )
   })
-  .post("/classes", v("json", classBody), (c) => {
+  .post("/classes", v("json", classBody), async (c) => {
     const me = authorize(c, "inventory.manage")
     const db = c.var.db
     const body = c.req.valid("json")
-    levelOf(db, body.minLevelId)
-    const row = db.transaction(() => {
-      const r = db
-        .insert(equipmentClasses)
-        .values({
-          name: body.name,
-          minLevelId: body.minLevelId,
-          description: body.description ?? "",
-        })
-        .returning()
-        .get()
-      audit(db, {
-        actorId: me.id,
-        action: "equipment_class.create",
-        entityType: "equipment_class",
-        entityId: r.id,
-        after: r,
+    await levelOf(db, body.minLevelId)
+    const r = await db
+      .insert(equipmentClasses)
+      .values({
+        name: body.name,
+        minLevelId: body.minLevelId,
+        description: body.description ?? "",
       })
-      return r
+      .returning()
+      .get()
+    await audit(db, {
+      actorId: me.id,
+      action: "equipment_class.create",
+      entityType: "equipment_class",
+      entityId: r.id,
+      after: r,
     })
-    return c.json(row, 201)
+    return c.json(r, 201)
   })
-  .patch("/classes/:id", v("json", classPatch), (c) => {
+  .patch("/classes/:id", v("json", classPatch), async (c) => {
     const me = authorize(c, "inventory.manage")
     const db = c.var.db
     const id = c.req.param("id")
-    const before = classOf(db, id)
+    const before = await classOf(db, id)
     const body = c.req.valid("json")
-    if (body.minLevelId) levelOf(db, body.minLevelId)
+    if (body.minLevelId) await levelOf(db, body.minLevelId)
     const levelChanged =
       body.minLevelId !== undefined && body.minLevelId !== before.minLevelId
-    const flaggedEvents = db.transaction(() => {
-      const after = db
-        .update(equipmentClasses)
-        .set({
-          name: body.name ?? before.name,
-          minLevelId: body.minLevelId ?? before.minLevelId,
-          description: body.description ?? before.description,
-        })
-        .where(eq(equipmentClasses.id, id))
-        .returning()
-        .get()
-      audit(db, {
-        actorId: me.id,
-        action: "equipment_class.update",
-        entityType: "equipment_class",
-        entityId: id,
-        before,
-        after,
+    const after = await db
+      .update(equipmentClasses)
+      .set({
+        name: body.name ?? before.name,
+        minLevelId: body.minLevelId ?? before.minLevelId,
+        description: body.description ?? before.description,
       })
-      if (!levelChanged) return []
-      const typeIds = db
-        .select({ id: equipmentTypes.id })
-        .from(equipmentTypes)
-        .where(eq(equipmentTypes.classId, id))
-        .all()
-        .map((r) => r.id)
-      return recheckTypes(db, typeIds)
+      .where(eq(equipmentClasses.id, id))
+      .returning()
+      .get()
+    await audit(db, {
+      actorId: me.id,
+      action: "equipment_class.update",
+      entityType: "equipment_class",
+      entityId: id,
+      before,
+      after,
     })
-    return c.json({ ...classOf(db, id), flaggedEvents })
+    let flaggedEvents: string[] = []
+    if (levelChanged) {
+      const typeIds = (
+        await db
+          .select({ id: equipmentTypes.id })
+          .from(equipmentTypes)
+          .where(eq(equipmentTypes.classId, id))
+          .all()
+      ).map((r) => r.id)
+      flaggedEvents = await recheckTypes(db, typeIds)
+    }
+    return c.json({ ...(await classOf(db, id)), flaggedEvents })
   })
   .get(
     "/types",
     v("query", z.object({ includeInactive: z.string().optional() })),
-    (c) => {
+    async (c) => {
       const me = requireUser(c)
       const db = c.var.db
       const includeInactive =
         isStaff(me) && c.req.valid("query").includeInactive === "1"
-      const counts = countsByType(db)
+      const counts = await countsByType(db)
       return c.json(
-        loadTypes(
-          db,
-          includeInactive ? undefined : eq(equipmentTypes.status, "active")
+        (
+          await loadTypes(
+            db,
+            includeInactive ? undefined : eq(equipmentTypes.status, "active")
+          )
         ).map((r) => typeView(r, counts.get(r.t.id) ?? emptyCounts()))
       )
     }
   )
-  .get("/types/:id", (c) => {
+  .get("/types/:id", async (c) => {
     const me = requireUser(c)
     const db = c.var.db
     const id = c.req.param("id")
     const staff = isStaff(me)
-    const row = loadTypes(db, eq(equipmentTypes.id, id))[0]
+    const row = (await loadTypes(db, eq(equipmentTypes.id, id)))[0]
     if (!row || (row.t.status !== "active" && !staff))
       throw notFound("Equipment type")
-    const counts = countsByType(db).get(id) ?? emptyCounts()
+    const counts = (await countsByType(db)).get(id) ?? emptyCounts()
     const view = typeView(row, counts)
     // One response shape for every caller: staff get the detail, everyone else gets empty detail (never omitted).
     const units = staff
-      ? db
+      ? await db
           .select({
             id: equipmentUnits.id,
             assetTag: equipmentUnits.assetTag,
@@ -386,11 +389,14 @@ export const routes = new Hono<AppEnv>()
           .all()
       : []
     const bulk = staff
-      ? (db.select().from(bulkStock).where(eq(bulkStock.typeId, id)).get() ??
-        null)
+      ? ((await db
+          .select()
+          .from(bulkStock)
+          .where(eq(bulkStock.typeId, id))
+          .get()) ?? null)
       : null
     const history = staff
-      ? db
+      ? await db
           .select()
           .from(statusHistory)
           .where(eq(statusHistory.typeId, id))
@@ -400,177 +406,169 @@ export const routes = new Hono<AppEnv>()
       : []
     return c.json({ ...view, units, bulkStock: bulk, statusHistory: history })
   })
-  .post("/types", v("json", typeBody), (c) => {
+  .post("/types", v("json", typeBody), async (c) => {
     const me = authorize(c, "inventory.manage")
     const db = c.var.db
     const body = c.req.valid("json")
-    classOf(db, body.classId)
-    const row = db.transaction(() => {
-      const r = db
-        .insert(equipmentTypes)
-        .values({
-          classId: body.classId,
-          name: body.name,
-          manufacturer: body.manufacturer ?? "",
-          model: body.model ?? "",
-          tracking: body.tracking,
-          maxPerEvent: body.maxPerEvent ?? null,
-          description: body.description ?? "",
-        })
-        .returning()
-        .get()
-      // Bulk types always have a stock row so reservations and adjustments have somewhere to land.
-      if (r.tracking === "bulk")
-        db.insert(bulkStock).values({ typeId: r.id }).run()
-      audit(db, {
-        actorId: me.id,
-        action: "equipment_type.create",
-        entityType: "equipment_type",
-        entityId: r.id,
-        after: r,
+    await classOf(db, body.classId)
+    const r = await db
+      .insert(equipmentTypes)
+      .values({
+        classId: body.classId,
+        name: body.name,
+        manufacturer: body.manufacturer ?? "",
+        model: body.model ?? "",
+        tracking: body.tracking,
+        maxPerEvent: body.maxPerEvent ?? null,
+        description: body.description ?? "",
       })
-      return r
+      .returning()
+      .get()
+    // Bulk types always have a stock row so reservations and adjustments have somewhere to land.
+    if (r.tracking === "bulk")
+      await db.insert(bulkStock).values({ typeId: r.id }).run()
+    await audit(db, {
+      actorId: me.id,
+      action: "equipment_type.create",
+      entityType: "equipment_type",
+      entityId: r.id,
+      after: r,
     })
-    return c.json(row, 201)
+    return c.json(r, 201)
   })
-  .patch("/types/:id", v("json", typePatch), (c) => {
+  .patch("/types/:id", v("json", typePatch), async (c) => {
     const me = authorize(c, "inventory.manage")
     const db = c.var.db
     const id = c.req.param("id")
-    const before = typeOf(db, id)
+    const before = await typeOf(db, id)
     const body = c.req.valid("json")
-    if (body.classId) classOf(db, body.classId)
+    if (body.classId) await classOf(db, body.classId)
     const trackingChanged =
       body.tracking !== undefined && body.tracking !== before.tracking
-    if (trackingChanged && hasStock(db, id))
+    if (trackingChanged && (await hasStock(db, id)))
       throw conflict(
         "TRACKING_LOCKED",
         "Tracking cannot change once units or stock exist. Retire this type and create a new one."
       )
-    const flaggedEvents = db.transaction(() => {
-      const after = db
-        .update(equipmentTypes)
-        .set({
-          classId: body.classId ?? before.classId,
-          name: body.name ?? before.name,
-          manufacturer: body.manufacturer ?? before.manufacturer,
-          model: body.model ?? before.model,
-          tracking: body.tracking ?? before.tracking,
-          maxPerEvent:
-            body.maxPerEvent === undefined
-              ? before.maxPerEvent
-              : body.maxPerEvent,
-          description: body.description ?? before.description,
-          status: body.status ?? before.status,
-        })
-        .where(eq(equipmentTypes.id, id))
-        .returning()
-        .get()
-      if (trackingChanged) {
-        if (after.tracking === "bulk")
-          db.insert(bulkStock).values({ typeId: id }).run()
-        else db.delete(bulkStock).where(eq(bulkStock.typeId, id)).run()
-      }
-      audit(db, {
-        actorId: me.id,
-        action: "equipment_type.update",
-        entityType: "equipment_type",
-        entityId: id,
-        before,
-        after,
+    const after = await db
+      .update(equipmentTypes)
+      .set({
+        classId: body.classId ?? before.classId,
+        name: body.name ?? before.name,
+        manufacturer: body.manufacturer ?? before.manufacturer,
+        model: body.model ?? before.model,
+        tracking: body.tracking ?? before.tracking,
+        maxPerEvent:
+          body.maxPerEvent === undefined
+            ? before.maxPerEvent
+            : body.maxPerEvent,
+        description: body.description ?? before.description,
+        status: body.status ?? before.status,
       })
-      const capacityChanged =
-        (body.status !== undefined && body.status !== before.status) ||
-        (body.classId !== undefined && body.classId !== before.classId)
-      return capacityChanged ? recheckEvents(db, { equipmentTypeId: id }) : []
+      .where(eq(equipmentTypes.id, id))
+      .returning()
+      .get()
+    if (trackingChanged) {
+      if (after.tracking === "bulk")
+        await db.insert(bulkStock).values({ typeId: id }).run()
+      else await db.delete(bulkStock).where(eq(bulkStock.typeId, id)).run()
+    }
+    await audit(db, {
+      actorId: me.id,
+      action: "equipment_type.update",
+      entityType: "equipment_type",
+      entityId: id,
+      before,
+      after,
     })
-    const row = loadTypes(db, eq(equipmentTypes.id, id))[0]!
+    const capacityChanged =
+      (body.status !== undefined && body.status !== before.status) ||
+      (body.classId !== undefined && body.classId !== before.classId)
+    const flaggedEvents = capacityChanged
+      ? await recheckEvents(db, { equipmentTypeId: id })
+      : []
+    const row = (await loadTypes(db, eq(equipmentTypes.id, id)))[0]!
     return c.json({
-      ...typeView(row, countsByType(db).get(id) ?? emptyCounts()),
+      ...typeView(row, (await countsByType(db)).get(id) ?? emptyCounts()),
       flaggedEvents,
     })
   })
-  .post("/types/:id/units", v("json", unitBody), (c) => {
+  .post("/types/:id/units", v("json", unitBody), async (c) => {
     const me = authorize(c, "inventory.manage")
     const db = c.var.db
     const typeId = c.req.param("id")
-    const type = typeOf(db, typeId)
+    const type = await typeOf(db, typeId)
     if (type.tracking !== "serialized")
       throw badRequest("NOT_SERIALIZED", "Only serialized types have units.")
     const body = c.req.valid("json")
     if (
-      db
+      await db
         .select({ id: equipmentUnits.id })
         .from(equipmentUnits)
         .where(eq(equipmentUnits.assetTag, body.assetTag))
         .get()
     )
       throw conflict("ASSET_TAG_TAKEN", "That asset tag is already used.")
-    const unit = db.transaction(() => {
-      const u = db
-        .insert(equipmentUnits)
-        .values({
-          typeId,
-          assetTag: body.assetTag,
-          serialNumber: body.serialNumber ?? "",
-          notes: body.notes ?? "",
-        })
-        .returning()
-        .get()
-      db.insert(statusHistory)
-        .values({
-          unitId: u.id,
-          typeId,
-          fromStatus: null,
-          toStatus: u.status,
-          actorId: me.id,
-          reason: "Added to inventory",
-        })
-        .run()
-      audit(db, {
-        actorId: me.id,
-        action: "unit.create",
-        entityType: "unit",
-        entityId: u.id,
-        after: u,
+    const u = await db
+      .insert(equipmentUnits)
+      .values({
+        typeId,
+        assetTag: body.assetTag,
+        serialNumber: body.serialNumber ?? "",
+        notes: body.notes ?? "",
       })
-      return u
+      .returning()
+      .get()
+    await db
+      .insert(statusHistory)
+      .values({
+        unitId: u.id,
+        typeId,
+        fromStatus: null,
+        toStatus: u.status,
+        actorId: me.id,
+        reason: "Added to inventory",
+      })
+      .run()
+    await audit(db, {
+      actorId: me.id,
+      action: "unit.create",
+      entityType: "unit",
+      entityId: u.id,
+      after: u,
     })
-    return c.json(unit, 201)
+    return c.json(u, 201)
   })
-  .patch("/units/:id", v("json", unitPatch), (c) => {
+  .patch("/units/:id", v("json", unitPatch), async (c) => {
     const me = authorize(c, "inventory.manage")
     const db = c.var.db
     const id = c.req.param("id")
-    const before = unitOf(db, id)
+    const before = await unitOf(db, id)
     const body = c.req.valid("json")
-    const after = db.transaction(() => {
-      const u = db
-        .update(equipmentUnits)
-        .set({
-          serialNumber: body.serialNumber ?? before.serialNumber,
-          notes: body.notes ?? before.notes,
-        })
-        .where(eq(equipmentUnits.id, id))
-        .returning()
-        .get()
-      audit(db, {
-        actorId: me.id,
-        action: "unit.update",
-        entityType: "unit",
-        entityId: id,
-        before,
-        after: u,
+    const u = await db
+      .update(equipmentUnits)
+      .set({
+        serialNumber: body.serialNumber ?? before.serialNumber,
+        notes: body.notes ?? before.notes,
       })
-      return u
+      .where(eq(equipmentUnits.id, id))
+      .returning()
+      .get()
+    await audit(db, {
+      actorId: me.id,
+      action: "unit.update",
+      entityType: "unit",
+      entityId: id,
+      before,
+      after: u,
     })
-    return c.json(after)
+    return c.json(u)
   })
-  .post("/units/:id/status", v("json", statusBody), (c) => {
+  .post("/units/:id/status", v("json", statusBody), async (c) => {
     const me = authorize(c, "inventory.manage")
     const db = c.var.db
     const id = c.req.param("id")
-    const unit = unitOf(db, id)
+    const unit = await unitOf(db, id)
     const body = c.req.valid("json")
     if (body.status === unit.status)
       throw badRequest("NO_CHANGE", "The unit already has that status.")
@@ -584,45 +582,45 @@ export const routes = new Hono<AppEnv>()
         "EXPECTED_BACK_REQUIRED",
         "Give the date the unit is expected back from repair."
       )
-    const flagged = db.transaction(() => {
-      db.update(equipmentUnits)
-        .set({
-          status: body.status,
-          expectedBack:
-            body.status === "in_repair" ? (body.expectedBack ?? null) : null,
-        })
-        .where(eq(equipmentUnits.id, id))
-        .run()
-      db.insert(statusHistory)
-        .values({
-          unitId: id,
-          typeId: unit.typeId,
-          fromStatus: unit.status,
-          toStatus: body.status,
-          actorId: me.id,
-          reason: body.reason,
-        })
-        .run()
-      audit(db, {
+    await db
+      .update(equipmentUnits)
+      .set({
+        status: body.status,
+        expectedBack:
+          body.status === "in_repair" ? (body.expectedBack ?? null) : null,
+      })
+      .where(eq(equipmentUnits.id, id))
+      .run()
+    await db
+      .insert(statusHistory)
+      .values({
+        unitId: id,
+        typeId: unit.typeId,
+        fromStatus: unit.status,
+        toStatus: body.status,
         actorId: me.id,
-        action: "unit.status",
-        entityType: "unit",
-        entityId: id,
-        before: { status: unit.status },
-        after: { status: body.status, expectedBack: body.expectedBack ?? null },
         reason: body.reason,
       })
-      // BR-003-08: leaving bookable capacity re-runs reservations.
-      return recheckTypes(db, [unit.typeId])
+      .run()
+    await audit(db, {
+      actorId: me.id,
+      action: "unit.status",
+      entityType: "unit",
+      entityId: id,
+      before: { status: unit.status },
+      after: { status: body.status, expectedBack: body.expectedBack ?? null },
+      reason: body.reason,
     })
-    const updated = unitOf(db, id)
+    // BR-003-08: leaving bookable capacity re-runs reservations.
+    const flagged = await recheckTypes(db, [unit.typeId])
+    const updated = await unitOf(db, id)
     return c.json({ ...updated, flaggedEvents: flagged })
   })
-  .post("/types/:id/bulk-adjust", v("json", bulkBody), (c) => {
+  .post("/types/:id/bulk-adjust", v("json", bulkBody), async (c) => {
     const me = authorize(c, "inventory.manage")
     const db = c.var.db
     const typeId = c.req.param("id")
-    const type = typeOf(db, typeId)
+    const type = await typeOf(db, typeId)
     if (type.tracking !== "bulk")
       throw badRequest(
         "NOT_BULK",
@@ -641,7 +639,7 @@ export const routes = new Hono<AppEnv>()
         "INVALID_TRANSITION",
         `Stock cannot move from ${from} to ${to}.`
       )
-    const stock = db
+    const stock = await db
       .select()
       .from(bulkStock)
       .where(eq(bulkStock.typeId, typeId))
@@ -654,51 +652,52 @@ export const routes = new Hono<AppEnv>()
         `Only ${bucketQty(stock, from)} in ${from}.`
       )
 
-    const flagged = db.transaction(() => {
-      if (from !== null)
-        db.update(bulkStock)
-          .set(bucketDelta(from, -qty))
-          .where(eq(bulkStock.typeId, typeId))
-          .run()
-      if (to !== null)
-        db.update(bulkStock)
-          .set(bucketDelta(to, qty))
-          .where(eq(bulkStock.typeId, typeId))
-          .run()
-      // Removing stock is recorded as moving it to retired (status_history.to_status is required).
-      db.insert(statusHistory)
-        .values({
-          typeId,
-          fromStatus: from,
-          toStatus: to ?? "retired",
-          qty,
-          actorId: me.id,
-          reason,
-        })
+    if (from !== null)
+      await db
+        .update(bulkStock)
+        .set(bucketDelta(from, -qty))
+        .where(eq(bulkStock.typeId, typeId))
         .run()
-      audit(db, {
+    if (to !== null)
+      await db
+        .update(bulkStock)
+        .set(bucketDelta(to, qty))
+        .where(eq(bulkStock.typeId, typeId))
+        .run()
+    // Removing stock is recorded as moving it to retired (status_history.to_status is required).
+    await db
+      .insert(statusHistory)
+      .values({
+        typeId,
+        fromStatus: from,
+        toStatus: to ?? "retired",
+        qty,
         actorId: me.id,
-        action: "bulk.adjust",
-        entityType: "bulk_stock",
-        entityId: typeId,
-        before: { from, qty },
-        after: { to, qty },
         reason,
       })
-      // BR-003-08: capacity drops when stock leaves available or in_repair for anything but available.
-      const capacityDrops =
-        from !== null &&
-        (from === "available" || from === "in_repair") &&
-        to !== "available"
-      return capacityDrops ? recheckTypes(db, [typeId]) : []
+      .run()
+    await audit(db, {
+      actorId: me.id,
+      action: "bulk.adjust",
+      entityType: "bulk_stock",
+      entityId: typeId,
+      before: { from, qty },
+      after: { to, qty },
+      reason,
     })
+    // BR-003-08: capacity drops when stock leaves available or in_repair for anything but available.
+    const capacityDrops =
+      from !== null &&
+      (from === "available" || from === "in_repair") &&
+      to !== "available"
+    const flagged = capacityDrops ? await recheckTypes(db, [typeId]) : []
     return c.json({
       typeId,
-      counts: countsByType(db).get(typeId) ?? emptyCounts(),
+      counts: (await countsByType(db)).get(typeId) ?? emptyCounts(),
       flaggedEvents: flagged,
     })
   })
-  .post("/availability", v("json", availabilityBody), (c) => {
+  .post("/availability", v("json", availabilityBody), async (c) => {
     const me = requireUser(c)
     const db = c.var.db
     const body = c.req.valid("json")
@@ -706,15 +705,15 @@ export const routes = new Hono<AppEnv>()
     if (issues.length)
       throw badRequest("DAY_INVALID", issues[0]!.message, issues)
     const window: Interval = eventWindow(intervals)
-    const types = loadTypes(db, eq(equipmentTypes.status, "active"))
-    const avail = availability(
+    const types = await loadTypes(db, eq(equipmentTypes.status, "active"))
+    const avail = await availability(
       db,
       types.map((t) => t.t.id),
       window,
       intervals[0]!.day,
       { excludeEventId: body.excludeEventId ?? undefined }
     )
-    const grants = grantsFor(db, me.id)
+    const grants = await grantsFor(db, me.id)
     const days = intervals.map((d) => d.day)
     return c.json(
       types.map((r) => ({

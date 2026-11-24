@@ -27,15 +27,18 @@ export function endSession(c: Context<AppEnv>): void {
   deleteCookie(c, COOKIE, { path: "/" })
 }
 
-export function loadSessionUser(db: DB, userId: string): SessionUser | null {
-  const u = db.select().from(users).where(eq(users.id, userId)).get()
+export async function loadSessionUser(
+  db: DB,
+  userId: string
+): Promise<SessionUser | null> {
+  const u = await db.select().from(users).where(eq(users.id, userId)).get()
   if (!u || u.status !== "active") return null
-  const roles = db
+  const roles = await db
     .select({ role: roleAssignments.role, studioId: roleAssignments.studioId })
     .from(roleAssignments)
     .where(eq(roleAssignments.userId, u.id))
     .all()
-  const denied = db
+  const denied = await db
     .select({
       permission: permissionDenials.permission,
       studioId: permissionDenials.studioId,
@@ -56,7 +59,7 @@ export function loadSessionUser(db: DB, userId: string): SessionUser | null {
 /** Resolves the session cookie into c.var.user (null when signed out). */
 export const sessionMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
   const userId = await getSignedCookie(c, config.sessionSecret, COOKIE)
-  c.set("user", userId ? loadSessionUser(c.var.db, userId) : null)
+  c.set("user", userId ? await loadSessionUser(c.var.db, userId) : null)
   await next()
 }
 

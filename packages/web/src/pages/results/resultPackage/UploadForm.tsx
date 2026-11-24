@@ -11,19 +11,14 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
-import { postItem } from "./model"
+import { uploadFile } from "./model"
 import { usePackageMutation } from "./usePackageRefresh"
 
 export function UploadForm({ eventId }: { eventId: string }) {
   const [file, setFile] = useState<File | null>(null)
   const [title, setTitle] = useState("")
   const upload = usePackageMutation(eventId, {
-    mutationFn: async () => {
-      const form = new FormData()
-      form.append("file", file!)
-      form.append("title", title.trim())
-      return postItem(eventId, form)
-    },
+    mutationFn: () => uploadFile(eventId, file!, title.trim()),
     onDone: () => {
       setFile(null)
       setTitle("")

@@ -1,3 +1,4 @@
+import { uploadPresigned } from "@vercel/blob/client"
 import type { InferResponseType } from "hono/client"
 import type { DialogField } from "@/components/events/shared"
 import { api, unwrap } from "@/lib/api"
@@ -114,20 +115,49 @@ export function isHttps(url: string): boolean {
   }
 }
 
-export async function postItem(
-  eventId: string,
-  body: FormData | { kind: "link"; title: string; url: string }
-) {
-  const init: RequestInit =
-    body instanceof FormData
-      ? { method: "POST", body, credentials: "same-origin" }
-      : {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-          credentials: "same-origin",
-        }
-  return unwrap<{ id: string }>(
-    fetch(`/api/results/events/${eventId}/items`, init)
+type ItemBody = Parameters<
+  (typeof api.results.events)[":eventId"]["items"]["$post"]
+>[0]["json"]
+
+export function postItem(eventId: string, body: ItemBody) {
+  return unwrap(
+    api.results.events[":eventId"].items.$post({
+      param: { eventId },
+      json: body,
+    })
   )
+}
+
+/** Files above this go to Blob in parts, so a dropped connection costs one part rather than the whole file. */
+const MULTIPART_FROM_BYTES = 100 * 1024 * 1024
+
+/**
+ * Uploads a result file: the API checks it and names its storage key, the bytes go straight to storage (Vercel Blob,
+ * or the API's local store in development), then the API records the item.
+ */
+export async function uploadFile(eventId: string, file: File, title: string) {
+  const contentType = file.type || "application/octet-stream"
+  const { key, target } = await unwrap(
+    api.results.events[":eventId"].uploads.$post({
+      param: { eventId },
+      json: { fileName: file.name, contentType, size: file.size },
+    })
+  )
+  if (target.storage === "blob") {
+    await uploadPresigned(key, file, {
+      access: "private",
+      handleUploadUrl: `/api/results/events/${eventId}/uploads/presign`,
+      contentType,
+      multipart: file.size >= MULTIPART_FROM_BYTES,
+    })
+  } else {
+    const res = await fetch(target.url, {
+      method: "PUT",
+      body: file,
+      headers: { "content-type": contentType },
+      credentials: "same-origin",
+    })
+    if (!res.ok) await unwrap(Promise.resolve(res))
+  }
+  return postItem(eventId, { kind: "file", title, key, contentType })
 }

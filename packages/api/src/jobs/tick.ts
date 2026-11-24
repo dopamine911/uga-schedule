@@ -60,7 +60,7 @@ const REMINDER_STALE_MS = HOUR_MS
 const STAGE_STATES: readonly EventRow["state"][] = ["Confirmed", "InProgress"]
 
 /** Notifies recipients who have not yet received this notification key (notify itself is idempotent per key). */
-function notifyOnce(
+async function notifyOnce(
   db: DB,
   n: {
     code: string
@@ -70,32 +70,32 @@ function notifyOnce(
     body: string
     key: string
   }
-): number {
+): Promise<number> {
   let sent = 0
   for (const to of new Set(n.to)) {
     const dedupeKey = `${n.key}:${to}`
     if (
-      db
+      await db
         .select({ id: notifications.id })
         .from(notifications)
         .where(eq(notifications.dedupeKey, dedupeKey))
         .get()
     )
       continue
-    notify(db, { ...n, to: [to] })
+    await notify(db, { ...n, to: [to] })
     sent++
   }
   return sent
 }
 
-function dayStartOf(db: DB, ev: EventRow): string | null {
-  return eventSpan(db, ev.id)?.start ?? null
+async function dayStartOf(db: DB, ev: EventRow): Promise<string | null> {
+  return (await eventSpan(db, ev.id))?.start ?? null
 }
 
 // ── Reminders and tasks (F-005) ──────────────────────────────────────
 
-function sendDueReminders(db: DB, at: string): number {
-  const due = db
+async function sendDueReminders(db: DB, at: string): Promise<number> {
+  const due = await db
     .select()
     .from(stageInstances)
     .where(
@@ -109,25 +109,27 @@ function sendDueReminders(db: DB, at: string): number {
   let sent = 0
   const nowMs = Date.parse(at)
   for (const s of due) {
-    const ev = getEvent(db, s.eventId)
+    const ev = await getEvent(db, s.eventId)
     if (!ev || !STAGE_STATES.includes(ev.state)) continue
     if (nowMs - Date.parse(s.dueAt) > REMINDER_STALE_MS) {
-      db.update(stageInstances)
+      await db
+        .update(stageInstances)
         .set({ status: "skipped" })
         .where(eq(stageInstances.id, s.id))
         .run()
       continue
     }
-    db.update(stageInstances)
+    await db
+      .update(stageInstances)
       .set({ status: "sent" })
       .where(eq(stageInstances.id, s.id))
       .run()
-    notify(db, {
+    await notify(db, {
       code: "STAGE_REMINDER",
-      to: stageAudience(db, s.eventId, s),
+      to: await stageAudience(db, s.eventId, s),
       eventId: s.eventId,
       subject: s.name,
-      body: renderMessage(db, ev, s.message),
+      body: await renderMessage(db, ev, s.message),
       key: `STAGE_REMINDER:${s.id}`,
     })
     sent++
@@ -135,8 +137,8 @@ function sendDueReminders(db: DB, at: string): number {
   return sent
 }
 
-function markOverdueTasks(db: DB, at: string): number {
-  const late = db
+async function markOverdueTasks(db: DB, at: string): Promise<number> {
+  const late = await db
     .select()
     .from(stageInstances)
     .where(
@@ -149,19 +151,20 @@ function markOverdueTasks(db: DB, at: string): number {
     .all()
   let marked = 0
   for (const s of late) {
-    const ev = getEvent(db, s.eventId)
+    const ev = await getEvent(db, s.eventId)
     if (!ev || !STAGE_STATES.includes(ev.state)) continue
-    db.update(stageInstances)
+    await db
+      .update(stageInstances)
       .set({ status: "overdue" })
       .where(eq(stageInstances.id, s.id))
       .run()
     marked++
-    notify(db, {
+    await notify(db, {
       code: "TASK_DUE",
-      to: stageAudience(db, s.eventId, s),
+      to: await stageAudience(db, s.eventId, s),
       eventId: s.eventId,
       subject: `Overdue: ${s.name}`,
-      body: renderMessage(db, ev, s.message, s.name),
+      body: await renderMessage(db, ev, s.message, s.name),
       key: `TASK_DUE:${s.id}`,
     })
   }
@@ -170,16 +173,16 @@ function markOverdueTasks(db: DB, at: string): number {
 
 // ── Decision SLAs and cutoffs (BR-006-07) ────────────────────────────
 
-function expireDecisions(db: DB, at: string): number {
-  const p = getPolicies(db)
+async function expireDecisions(db: DB, at: string): Promise<number> {
+  const p = await getPolicies(db)
   const nowMs = Date.parse(at)
   let expired = 0
-  for (const ev of db
+  for (const ev of await db
     .select()
     .from(events)
     .where(inArray(events.state, ["Submitted", "SponsorApproved"]))
     .all()) {
-    const start = dayStartOf(db, ev)
+    const start = await dayStartOf(db, ev)
     const cutoffPassed =
       start !== null &&
       nowMs >= Date.parse(start) - p.DECISION_CUTOFF_HOURS * HOUR_MS
@@ -192,7 +195,7 @@ function expireDecisions(db: DB, at: string): number {
       ev.sponsorDecidedAt !== null &&
       nowMs - Date.parse(ev.sponsorDecidedAt) >= p.STAFF_SLA_HOURS * HOUR_MS
     if (!cutoffPassed && !sponsorSlaPassed && !staffSlaPassed) continue
-    moveEvent(
+    await moveEvent(
       db,
       ev,
       "expire",
@@ -200,9 +203,9 @@ function expireDecisions(db: DB, at: string): number {
       {},
       cutoffPassed ? "decision cutoff passed" : "decision SLA passed"
     )
-    notify(db, {
+    await notify(db, {
       code: "EVENT_EXPIRED",
-      to: eventAudience(db, ev.id, ["requester", "sponsor"]),
+      to: await eventAudience(db, ev.id, ["requester", "sponsor"]),
       eventId: ev.id,
       subject: `Expired: ${ev.title}`,
       body: cutoffPassed
@@ -215,11 +218,11 @@ function expireDecisions(db: DB, at: string): number {
   return expired
 }
 
-function sendDecisionReminders(db: DB, at: string): number {
-  const p = getPolicies(db)
+async function sendDecisionReminders(db: DB, at: string): Promise<number> {
+  const p = await getPolicies(db)
   const nowMs = Date.parse(at)
   let sent = 0
-  for (const ev of db
+  for (const ev of await db
     .select()
     .from(events)
     .where(inArray(events.state, ["Submitted", "SponsorApproved"]))
@@ -231,9 +234,9 @@ function sendDecisionReminders(db: DB, at: string): number {
     const elapsed = nowMs - Date.parse(since)
     for (const pct of SLA_THRESHOLDS) {
       if (elapsed < (slaHours * HOUR_MS * pct) / 100) continue
-      sent += notifyOnce(db, {
+      sent += await notifyOnce(db, {
         code: isSponsorStage ? "SPONSOR_DECISION_DUE" : "STAFF_DECISION_DUE",
-        to: eventAudience(
+        to: await eventAudience(
           db,
           ev.id,
           isSponsorStage ? ["sponsor"] : ["studio_staff"]
@@ -252,16 +255,16 @@ function sendDecisionReminders(db: DB, at: string): number {
 // ── Event lifecycle ──────────────────────────────────────────────────
 
 /** BR-006-13: a confirmed event not started by the end of its first day is a no-show. */
-function markNoShows(db: DB, at: string): number {
+async function markNoShows(db: DB, at: string): Promise<number> {
   let count = 0
-  for (const ev of db
+  for (const ev of await db
     .select()
     .from(events)
     .where(eq(events.state, "Confirmed"))
     .all()) {
-    const span = eventSpan(db, ev.id)
+    const span = await eventSpan(db, ev.id)
     if (!span || span.firstEnd > at) continue
-    moveEvent(
+    await moveEvent(
       db,
       ev,
       "no_show",
@@ -269,39 +272,39 @@ function markNoShows(db: DB, at: string): number {
       {},
       "not started by the end of the first day"
     )
-    cancelOpenStages(db, ev.id)
+    await cancelOpenStages(db, ev.id)
     count++
   }
   return count
 }
 
 /** Events whose last day has ended move to PostEvent (BR-006-15); their package is created here (F-008). */
-function endEvents(db: DB, at: string): number {
+async function endEvents(db: DB, at: string): Promise<number> {
   let count = 0
-  for (const ev of db
+  for (const ev of await db
     .select()
     .from(events)
     .where(eq(events.state, "InProgress"))
     .all()) {
-    const span = eventSpan(db, ev.id)
+    const span = await eventSpan(db, ev.id)
     if (!span || span.end > at) continue
-    const updated = moveEvent(db, ev, "end", null, {}, "last day ended")
-    ensurePackage(db, updated)
+    const updated = await moveEvent(db, ev, "end", null, {}, "last day ended")
+    await ensurePackage(db, updated)
     count++
   }
   return count
 }
 
 /** PostEvent events whose check-in is complete publish and close when no later step is required (F-008 §3). */
-function advanceFinishedEvents(db: DB): number {
+async function advanceFinishedEvents(db: DB): Promise<number> {
   let closed = 0
-  for (const ev of db
+  for (const ev of await db
     .select()
     .from(events)
     .where(eq(events.state, "PostEvent"))
     .all()) {
-    advancePostEvent(db, ev.id, null)
-    if (getEvent(db, ev.id)?.state === "Closed") closed++
+    await advancePostEvent(db, ev.id, null)
+    if ((await getEvent(db, ev.id))?.state === "Closed") closed++
   }
   return closed
 }
@@ -309,25 +312,27 @@ function advanceFinishedEvents(db: DB): number {
 // ── Equipment (F-007) ────────────────────────────────────────────────
 
 /** Overdue returns: mark late; notify the requester at most once per 24 h (lastOverdueNoticeAt). */
-function flagOverdueReturns(db: DB, at: string): number {
-  const overdue = db
-    .select()
-    .from(checkoutRecords)
-    .where(lt(checkoutRecords.dueAt, at))
-    .all()
-    .filter((r) => outstandingQty(r) > 0)
+async function flagOverdueReturns(db: DB, at: string): Promise<number> {
+  const overdue = (
+    await db
+      .select()
+      .from(checkoutRecords)
+      .where(lt(checkoutRecords.dueAt, at))
+      .all()
+  ).filter((r) => outstandingQty(r) > 0)
   let notified = 0
   for (const r of overdue) {
-    const ev = getEvent(db, r.eventId)
+    const ev = await getEvent(db, r.eventId)
     if (!ev || (ev.state !== "InProgress" && ev.state !== "PostEvent")) continue
     const last = r.lastOverdueNoticeAt
     const due = !last || Date.parse(at) - Date.parse(last) >= DAY_MS
-    db.update(checkoutRecords)
+    await db
+      .update(checkoutRecords)
       .set({ late: true, ...(due ? { lastOverdueNoticeAt: at } : {}) })
       .where(eq(checkoutRecords.id, r.id))
       .run()
     if (!due) continue
-    notify(db, {
+    await notify(db, {
       code: "RETURN_OVERDUE",
       to: [ev.requesterId],
       eventId: ev.id,
@@ -341,35 +346,43 @@ function flagOverdueReturns(db: DB, at: string): number {
 }
 
 /** BR-003-07: items still out LOST_AFTER_DAYS after their due time are written off and a LOSS hold is placed. */
-function writeOffLost(db: DB, at: string): number {
+async function writeOffLost(db: DB, at: string): Promise<number> {
   const cutoff = new Date(
-    Date.parse(at) - getPolicies(db).LOST_AFTER_DAYS * DAY_MS
+    Date.parse(at) - (await getPolicies(db)).LOST_AFTER_DAYS * DAY_MS
   ).toISOString()
-  const stale = db
-    .select()
-    .from(checkoutRecords)
-    .where(lt(checkoutRecords.dueAt, cutoff))
-    .all()
-    .filter((r) => outstandingQty(r) > 0)
+  const stale = (
+    await db
+      .select()
+      .from(checkoutRecords)
+      .where(lt(checkoutRecords.dueAt, cutoff))
+      .all()
+  ).filter((r) => outstandingQty(r) > 0)
   const touched = new Set<string>()
   for (const r of stale) {
-    const ev = getEvent(db, r.eventId)
+    const ev = await getEvent(db, r.eventId)
     if (!ev) continue
     const qty = outstandingQty(r)
-    const type = db
+    const type = (await db
       .select()
       .from(equipmentTypes)
       .where(eq(equipmentTypes.id, r.equipmentTypeId))
-      .get()!
+      .get())!
     if (type.tracking === "serialized") {
-      const unit = db
+      const unit = (await db
         .select()
         .from(equipmentUnits)
         .where(eq(equipmentUnits.id, r.unitId!))
-        .get()!
-      setUnitStatus(db, unit, "lost", null, ev.id, "not returned: written off")
+        .get())!
+      await setUnitStatus(
+        db,
+        unit,
+        "lost",
+        null,
+        ev.id,
+        "not returned: written off"
+      )
     } else {
-      moveBulk(
+      await moveBulk(
         db,
         type.id,
         "qtyInUse",
@@ -380,11 +393,12 @@ function writeOffLost(db: DB, at: string): number {
         "not returned: written off"
       )
     }
-    db.update(checkoutRecords)
+    await db
+      .update(checkoutRecords)
       .set({ qtyLost: r.qtyLost + qty })
       .where(eq(checkoutRecords.id, r.id))
       .run()
-    placeHold(db, {
+    await placeHold(db, {
       userId: ev.requesterId,
       reason: "LOSS",
       eventId: ev.id,
@@ -394,13 +408,13 @@ function writeOffLost(db: DB, at: string): number {
     })
     touched.add(ev.id)
   }
-  for (const id of touched) advancePostEvent(db, id, null)
+  for (const id of touched) await advancePostEvent(db, id, null)
   return stale.length
 }
 
 /** LATE_RETURN holds clear automatically at their auto_clear_at (BR-007-10). */
-function clearExpiredLateHolds(db: DB, at: string): number {
-  const due = db
+async function clearExpiredLateHolds(db: DB, at: string): Promise<number> {
+  const due = await db
     .select()
     .from(holds)
     .where(
@@ -413,7 +427,7 @@ function clearExpiredLateHolds(db: DB, at: string): number {
     )
     .all()
   for (const h of due)
-    clearHold(
+    await clearHold(
       db,
       h,
       null,
@@ -431,8 +445,8 @@ interface GrantRow extends GrantLike {
   expiryWarnedAt: string | null
 }
 
-function allGrants(db: DB): GrantRow[] {
-  return db
+async function allGrants(db: DB): Promise<GrantRow[]> {
+  return await db
     .select({
       id: levelGrants.id,
       userId: levelGrants.userId,
@@ -452,12 +466,16 @@ function allGrants(db: DB): GrantRow[] {
  * Open events of a student that would lose eligibility once `expiring` stops counting: a day after its end that no
  * other grant covers (BR-002-10). Days before the grant ends stay covered by it, so they do not count.
  */
-function eventsLosingEligibility(db: DB, expiring: GrantRow): EventRow[] {
-  const others = allGrants(db).filter(
+async function eventsLosingEligibility(
+  db: DB,
+  expiring: GrantRow
+): Promise<EventRow[]> {
+  const others = (await allGrants(db)).filter(
     (g) => g.userId === expiring.userId && g.id !== expiring.id
   )
   const end = expiring.validUntil!
-  return db
+  const losing: EventRow[] = []
+  for (const ev of await db
     .select()
     .from(events)
     .where(
@@ -466,52 +484,55 @@ function eventsLosingEligibility(db: DB, expiring: GrantRow): EventRow[] {
         inArray(events.state, [...REVIEWABLE])
       )
     )
-    .all()
-    .filter((ev) => {
-      const after = daysOf(db, ev.id)
-        .map((d) => d.day)
-        .filter((day) => day > end)
-      if (after.length === 0) return false
-      const studioRank = db
-        .select({ rank: levels.rank })
-        .from(studios)
-        .innerJoin(levels, eq(levels.id, studios.minLevelId))
-        .where(eq(studios.id, ev.studioId))
-        .get()
-      if (studioRank && firstUncoveredDay(others, after, studioRank.rank))
-        return true
-      const classRanks = db
-        .select({ rank: levels.rank })
-        .from(equipmentLines)
-        .innerJoin(
-          equipmentTypes,
-          eq(equipmentTypes.id, equipmentLines.equipmentTypeId)
-        )
-        .innerJoin(
-          equipmentClasses,
-          eq(equipmentClasses.id, equipmentTypes.classId)
-        )
-        .innerJoin(levels, eq(levels.id, equipmentClasses.minLevelId))
-        .where(eq(equipmentLines.eventId, ev.id))
-        .all()
-      return classRanks.some(
-        (l) => firstUncoveredDay(others, after, l.rank) !== null
+    .all()) {
+    const after = (await daysOf(db, ev.id))
+      .map((d) => d.day)
+      .filter((day) => day > end)
+    if (after.length === 0) continue
+    const studioRank = await db
+      .select({ rank: levels.rank })
+      .from(studios)
+      .innerJoin(levels, eq(levels.id, studios.minLevelId))
+      .where(eq(studios.id, ev.studioId))
+      .get()
+    if (studioRank && firstUncoveredDay(others, after, studioRank.rank)) {
+      losing.push(ev)
+      continue
+    }
+    const classRanks = await db
+      .select({ rank: levels.rank })
+      .from(equipmentLines)
+      .innerJoin(
+        equipmentTypes,
+        eq(equipmentTypes.id, equipmentLines.equipmentTypeId)
       )
-    })
+      .innerJoin(
+        equipmentClasses,
+        eq(equipmentClasses.id, equipmentTypes.classId)
+      )
+      .innerJoin(levels, eq(levels.id, equipmentClasses.minLevelId))
+      .where(eq(equipmentLines.eventId, ev.id))
+      .all()
+    if (
+      classRanks.some((l) => firstUncoveredDay(others, after, l.rank) !== null)
+    )
+      losing.push(ev)
+  }
+  return losing
 }
 
-function warnExpiringGrants(db: DB, at: string): number {
-  const warnDays = getPolicies(db).GRANT_EXPIRY_WARN_DAYS
+async function warnExpiringGrants(db: DB, at: string): Promise<number> {
+  const warnDays = (await getPolicies(db)).GRANT_EXPIRY_WARN_DAYS
   const today = utcToLocal(at, config.tz).day
   const horizon = utcToLocal(addDaysIso(at, warnDays), config.tz).day
   let warned = 0
-  for (const g of allGrants(db)) {
+  for (const g of await allGrants(db)) {
     if (g.expiryWarnedAt || g.revokedOn || !g.validUntil) continue
     if (g.validUntil < today || g.validUntil > horizon) continue
-    const affected = eventsLosingEligibility(db, g)
+    const affected = await eventsLosingEligibility(db, g)
     if (affected.length === 0) continue
     const titles = (evs: typeof affected) => evs.map((e) => e.title).join(", ")
-    notify(db, {
+    await notify(db, {
       code: "GRANT_EXPIRING",
       to: [g.userId],
       eventId: affected[0]!.id,
@@ -520,17 +541,17 @@ function warnExpiringGrants(db: DB, at: string): number {
       key: `GRANT_EXPIRING:${g.id}`,
     })
     // Each sponsor hears about the student's grant and only the requests they sponsor.
-    const student = db
+    const student = (await db
       .select({ name: users.displayName })
       .from(users)
       .where(eq(users.id, g.userId))
-      .get()!.name
+      .get())!.name
     const bySponsor = new Map<string, typeof affected>()
     for (const e of affected)
       if (e.sponsorId && e.sponsorId !== g.userId)
         bySponsor.set(e.sponsorId, [...(bySponsor.get(e.sponsorId) ?? []), e])
     for (const [sponsorId, evs] of bySponsor)
-      notify(db, {
+      await notify(db, {
         code: "GRANT_EXPIRING",
         to: [sponsorId],
         eventId: evs[0]!.id,
@@ -538,7 +559,8 @@ function warnExpiringGrants(db: DB, at: string): number {
         body: `${student}'s ${g.levelName} access ends on ${g.validUntil}. Affected requests you sponsor: ${titles(evs)}.`,
         key: `GRANT_EXPIRING:${g.id}`,
       })
-    db.update(levelGrants)
+    await db
+      .update(levelGrants)
       .set({ expiryWarnedAt: at })
       .where(eq(levelGrants.id, g.id))
       .run()
@@ -548,10 +570,10 @@ function warnExpiringGrants(db: DB, at: string): number {
 }
 
 /** Users whose grants have already ended are rechecked so their open events get ELIGIBILITY_LOST (BR-002-09). */
-function recheckEndedGrants(db: DB, at: string): number {
+async function recheckEndedGrants(db: DB, at: string): Promise<number> {
   const today = utcToLocal(at, config.tz).day
   const users = new Set(
-    allGrants(db)
+    (await allGrants(db))
       .filter(
         (g) => !g.revokedOn && g.validUntil !== null && g.validUntil < today
       )
@@ -559,27 +581,27 @@ function recheckEndedGrants(db: DB, at: string): number {
   )
   let flagged = 0
   for (const userId of users)
-    flagged += recheckEvents(db, { requesterId: userId }).length
+    flagged += (await recheckEvents(db, { requesterId: userId })).length
   return flagged
 }
 
 // ── Results retention (BR-008-09) ────────────────────────────────────
 
-function warnResultsExpiring(db: DB, at: string): number {
+async function warnResultsExpiring(db: DB, at: string): Promise<number> {
   const horizon = addDaysIso(at, 30)
   let sent = 0
-  for (const pkg of db
+  for (const pkg of await db
     .select()
     .from(resultPackages)
     .where(eq(resultPackages.status, "published"))
     .all()) {
     if (!pkg.retainUntil || pkg.retainUntil > horizon || pkg.retainUntil <= at)
       continue
-    const ev = getEvent(db, pkg.eventId)
+    const ev = await getEvent(db, pkg.eventId)
     if (!ev) continue
-    sent += notifyOnce(db, {
+    sent += await notifyOnce(db, {
       code: "RESULTS_EXPIRING",
-      to: eventAudience(db, ev.id, ["requester", "sponsor"]),
+      to: await eventAudience(db, ev.id, ["requester", "sponsor"]),
       eventId: ev.id,
       subject: `Results expire soon: ${ev.title}`,
       body: `Download your results before ${localLabel(pkg.retainUntil)}.`,
@@ -589,8 +611,8 @@ function warnResultsExpiring(db: DB, at: string): number {
   return sent
 }
 
-function expirePublishedResults(db: DB, at: string): number {
-  const due = db
+async function expirePublishedResults(db: DB, at: string): Promise<number> {
+  const due = await db
     .select()
     .from(resultPackages)
     .where(
@@ -602,34 +624,38 @@ function expirePublishedResults(db: DB, at: string): number {
     )
     .all()
   for (const pkg of due) {
-    db.update(resultPackages)
+    await db
+      .update(resultPackages)
       .set({ status: "expired" })
       .where(eq(resultPackages.id, pkg.id))
       .run()
-    deletePackageFiles(pkg.id)
+    await deletePackageFiles(pkg.id)
   }
   return due.length
 }
 
-/** Runs every background rule once (NFR-OPS-01). Idempotent; safe to call repeatedly. */
-export function runJobs(db: DB): Record<string, number> {
+/**
+ * Runs every background rule once (NFR-OPS-01). Idempotent; safe to call repeatedly. Each rule runs in its own
+ * transaction: rules are idempotent, and one long interactive transaction over the network is fragile.
+ */
+export async function runJobs(db: DB): Promise<Record<string, number>> {
   const at = now()
-  return db.transaction(() => {
-    const ran: Record<string, number> = {}
-    ran.reminders_sent = sendDueReminders(db, at)
-    ran.tasks_overdue = markOverdueTasks(db, at)
-    ran.events_expired = expireDecisions(db, at)
-    ran.decision_reminders = sendDecisionReminders(db, at)
-    ran.no_shows = markNoShows(db, at)
-    ran.events_post_event = endEvents(db, at)
-    ran.overdue_returns = flagOverdueReturns(db, at)
-    ran.units_lost = writeOffLost(db, at)
-    ran.late_holds_cleared = clearExpiredLateHolds(db, at)
-    ran.grants_expiring = warnExpiringGrants(db, at)
-    ran.grant_rechecks = recheckEndedGrants(db, at)
-    ran.results_expiring = warnResultsExpiring(db, at)
-    ran.results_expired = expirePublishedResults(db, at)
-    ran.events_closed = advanceFinishedEvents(db)
-    return ran
-  })
+  const run = (rule: (tx: DB, at: string) => Promise<number>) =>
+    db.transaction(async (tx) => rule(tx, at))
+  const ran: Record<string, number> = {}
+  ran.reminders_sent = await run(sendDueReminders)
+  ran.tasks_overdue = await run(markOverdueTasks)
+  ran.events_expired = await run(expireDecisions)
+  ran.decision_reminders = await run(sendDecisionReminders)
+  ran.no_shows = await run(markNoShows)
+  ran.events_post_event = await run(endEvents)
+  ran.overdue_returns = await run(flagOverdueReturns)
+  ran.units_lost = await run(writeOffLost)
+  ran.late_holds_cleared = await run(clearExpiredLateHolds)
+  ran.grants_expiring = await run(warnExpiringGrants)
+  ran.grant_rechecks = await run(recheckEndedGrants)
+  ran.results_expiring = await run(warnResultsExpiring)
+  ran.results_expired = await run(expirePublishedResults)
+  ran.events_closed = await run(advanceFinishedEvents)
+  return ran
 }

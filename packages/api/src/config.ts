@@ -7,8 +7,12 @@ const devMode = process.env.DEV_MODE === "1"
 
 export const config = {
   port: Number(process.env.PORT ?? 3001),
-  /** SQLite file; ":memory:" in tests. */
-  dbFile: process.env.DB_FILE ?? resolve(dataDir, "studio.db"),
+  /** Turso (libsql://…) or a local SQLite file (file:…). Names match what the Vercel Turso integration sets. */
+  dbUrl:
+    process.env.TURSO_DATABASE_URL ?? `file:${resolve(dataDir, "studio.db")}`,
+  dbAuthToken: process.env.TURSO_AUTH_TOKEN,
+  /** Result files go to Vercel Blob when a store is connected, else to this local directory. */
+  blob: Boolean(process.env.BLOB_STORE_ID || process.env.BLOB_READ_WRITE_TOKEN),
   uploadDir: process.env.UPLOAD_DIR ?? resolve(dataDir, "uploads"),
   /** Campus time zone (overview §8). */
   tz: process.env.CAMPUS_TZ ?? "America/New_York",
