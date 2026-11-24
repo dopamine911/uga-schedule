@@ -86,6 +86,23 @@ export function busyToneClass(state: string | undefined): string {
   }
 }
 
+/** Small solid dot for a busy slot (phone month view): the strong version of busyToneClass's colour. */
+export function busyDotClass(state: string | undefined): string {
+  switch (state) {
+    case "Submitted":
+    case "SponsorApproved":
+      return "bg-info-foreground"
+    case "Confirmed":
+      return "bg-success-foreground"
+    case "InProgress":
+      return "bg-live-foreground"
+    case "PostEvent":
+      return "bg-warning-foreground"
+    default:
+      return "bg-primary"
+  }
+}
+
 /** First and last day of the month containing `anchor` ("YYYY-MM-DD"); at most 31 days, the API's limit. */
 export function monthRange(anchor: LocalDate): {
   first: LocalDate

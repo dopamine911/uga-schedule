@@ -6,6 +6,7 @@ import { addDaysTo } from "@/components/staff/shared"
 import { cn } from "@/lib/utils"
 import {
   busyEventId,
+  busyDotClass,
   busyLabel,
   busyState,
   busyToneClass,
@@ -89,11 +90,11 @@ export function ScheduleMonth({
   return (
     <Card>
       <CardContent className="overflow-x-auto">
-        <div className="grid min-w-[42rem] grid-cols-7 border-t border-l">
+        <div className="grid grid-cols-7 border-t border-l">
           {WEEKDAY_HEADINGS.map((heading) => (
             <div
               key={heading}
-              className="border-r border-b p-2 text-center text-xs font-bold tracking-widest text-muted-foreground uppercase"
+              className="border-r border-b px-0.5 py-2 text-center text-xs font-bold tracking-wider text-muted-foreground uppercase sm:p-2 sm:tracking-widest"
             >
               {heading}
             </div>
@@ -110,7 +111,7 @@ export function ScheduleMonth({
               <div
                 key={day}
                 className={cn(
-                  "flex min-h-28 flex-col gap-1 border-r border-b p-1.5",
+                  "flex min-h-16 min-w-0 flex-col gap-1 border-r border-b p-1 sm:min-h-28 sm:p-1.5",
                   (!inMonth || closed) && "bg-muted/60"
                 )}
               >
@@ -129,14 +130,35 @@ export function ScheduleMonth({
                     {Number(day.slice(8, 10))}
                   </Button>
                   {closed && (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="hidden text-xs text-muted-foreground sm:inline">
                       Closed
                     </span>
                   )}
                 </div>
                 {inMonth && blackoutDays.has(day) && (
-                  <span className="rounded-sm bg-destructive/15 px-1 text-xs font-medium text-destructive">
+                  <span className="hidden rounded-sm bg-destructive/15 px-1 text-xs font-medium text-destructive sm:block">
                     Blackout
+                  </span>
+                )}
+                {/* Phones: one dot per booking in its status colour (square = blackout); names live in the week view. */}
+                {inMonth && (bookings.length > 0 || blackoutDays.has(day)) && (
+                  <span
+                    className="flex flex-wrap gap-1 px-1 sm:hidden"
+                    aria-label={`${bookings.length} ${bookings.length === 1 ? "booking" : "bookings"}${blackoutDays.has(day) ? ", blackout" : ""}`}
+                    role="img"
+                  >
+                    {blackoutDays.has(day) && (
+                      <span className="size-2 rounded-[2px] bg-destructive" />
+                    )}
+                    {bookings.map((booking) => (
+                      <span
+                        key={booking.key}
+                        className={cn(
+                          "size-2 rounded-full",
+                          busyDotClass(booking.state)
+                        )}
+                      />
+                    ))}
                   </span>
                 )}
                 {inMonth &&
@@ -146,7 +168,7 @@ export function ScheduleMonth({
                       : booking.label
                     const className = cn(
                       busyToneClass(booking.state),
-                      "truncate rounded-sm px-1 text-xs"
+                      "hidden truncate rounded-sm px-1 text-xs sm:block"
                     )
                     return booking.eventId ? (
                       <Link
@@ -169,7 +191,7 @@ export function ScheduleMonth({
                 {inMonth && hidden > 0 && (
                   <button
                     type="button"
-                    className="self-start rounded-sm px-1 text-xs font-bold text-muted-foreground hover:text-foreground"
+                    className="hidden self-start rounded-sm px-1 text-xs font-bold text-muted-foreground hover:text-foreground sm:block"
                     onClick={() => onShowWeek(day)}
                   >
                     +{hidden} more
