@@ -30,7 +30,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { fmtDay, fmtDays, fmtInstant, firstName, humanize } from "@/lib/format"
+import {
+  fmtDay,
+  fmtDays,
+  fmtInstant,
+  fmtRelative,
+  firstName,
+  humanize,
+} from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { primaryRole } from "@/lib/nav"
 import { ROLE_INFO } from "@/lib/roles"
@@ -359,27 +366,92 @@ export function UpcomingEventsCard({
 }
 
 /** Steps that wait on the user, across requests, sponsor approvals and staff decisions. */
+/**
+ * The single most pressing step, shown large so the eye lands on it first: the action whose session
+ * starts soonest. Hidden when nothing waits on the user. The countdown is to the session start,
+ * not to a decision deadline (the dashboard rows carry none).
+ */
+export function NextUpCard({
+  action,
+  tz,
+  now,
+}: {
+  action: DashboardAction | undefined
+  tz: string
+  now: number
+}) {
+  if (!action) return null
+  return (
+    <section
+      aria-labelledby="next-up-title"
+      className="flex flex-col gap-4 rounded-xl border bg-card p-5 shadow-sm md:flex-row md:items-center md:justify-between"
+    >
+      <div className="flex min-w-0 flex-col gap-2">
+        <p className="flex items-center gap-2 text-xs font-bold tracking-[0.14em] text-muted-foreground uppercase">
+          Next up
+          <span className="rounded-full bg-warning px-2 py-0.5 tracking-normal text-warning-foreground normal-case">
+            Needs you
+          </span>
+        </p>
+        <h2 id="next-up-title" className="text-2xl leading-tight font-medium">
+          <Link
+            to={`/events/${action.id}`}
+            className="underline-offset-4 hover:underline"
+          >
+            {action.title}
+          </Link>
+        </h2>
+        <p className="text-muted-foreground">{action.action}</p>
+        <div>
+          <Button asChild>
+            <Link to={`/events/${action.id}`}>Open request</Link>
+          </Button>
+        </div>
+      </div>
+      {action.startsAt && (
+        <div className="flex shrink-0 flex-col gap-1 rounded-lg bg-warning px-5 py-4 text-warning-foreground md:min-w-56">
+          <span className="font-heading text-4xl leading-none font-medium">
+            {Date.parse(action.startsAt) > now
+              ? fmtRelative(action.startsAt, now).replace(/^in /, "")
+              : "Started"}
+          </span>
+          <span className="text-sm font-bold">
+            {Date.parse(action.startsAt) > now
+              ? "until the session"
+              : "the session is under way"}{" "}
+            · {fmtInstant(action.startsAt, tz)}
+          </span>
+        </div>
+      )}
+    </section>
+  )
+}
+
 export function NeedsActionCard({
   actions,
   loading,
+  tz,
 }: {
   actions: readonly DashboardAction[]
   loading: boolean
+  tz: string
 }) {
   return (
     <Card>
       <CardHeader>
         <CardTitle>
-          <IconTitle icon={ListTodoIcon}>Needs your action</IconTitle>
+          <IconTitle icon={ListTodoIcon}>Also needs you</IconTitle>
         </CardTitle>
-        <CardDescription>Steps that wait on you.</CardDescription>
+        <CardDescription>
+          Other steps that wait on you, soonest session first.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : actions.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Nothing needs you right now.
+            Nothing else needs you right now.
           </p>
         ) : (
           <ul className="flex flex-col gap-3">
@@ -399,6 +471,7 @@ export function NeedsActionCard({
                   </Link>
                   <span className="text-sm text-muted-foreground">
                     {a.action}
+                    {a.startsAt && ` · Session ${fmtInstant(a.startsAt, tz)}`}
                   </span>
                 </span>
               </li>

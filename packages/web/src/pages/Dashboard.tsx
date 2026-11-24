@@ -4,6 +4,7 @@ import {
   ExpiringAccessBanners,
   HoldBanners,
   NeedsActionCard,
+  NextUpCard,
   NotificationsCard,
   StaffCards,
   UpcomingEventsCard,
@@ -33,6 +34,7 @@ export function DashboardPage() {
       />
 
       <HoldBanners error={d.holds.error} holds={d.activeHolds} />
+      <NextUpCard action={d.actions[0]} tz={d.tz} now={d.now} />
       <ExpiringAccessBanners grants={d.expiring} />
 
       <StaffCards
@@ -52,7 +54,14 @@ export function DashboardPage() {
         />
 
         <div className="flex flex-col gap-6">
-          <NeedsActionCard actions={d.actions} loading={d.actionsLoading} />
+          {/* Only when something beyond "Next up" waits; otherwise the header already says so. */}
+          {(d.actionsLoading || d.actions.length > 1) && (
+            <NeedsActionCard
+              actions={d.actions.slice(1)}
+              loading={d.actionsLoading}
+              tz={d.tz}
+            />
+          )}
           <NotificationsCard
             query={d.notifications}
             unread={d.unread}

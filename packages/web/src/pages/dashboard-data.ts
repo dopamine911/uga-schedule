@@ -54,6 +54,8 @@ export interface DashboardAction {
   id: string
   title: string
   action: string
+  /** When the request's first session starts (UTC ISO), or null if it has no days yet. */
+  startsAt: string | null
 }
 
 /** Next-action text that asks the user to do something (the rest describe waiting on others). */
@@ -120,18 +122,31 @@ export function unreadOf(
   return (notifications ?? []).filter((n) => n.readAt === null).slice(0, 5)
 }
 
+function startOf(e: EventSummary): string | null {
+  return e.days[0]?.startsAt ?? null
+}
+
 /**
- * Actions for me: my own requests needing a step, sponsor approvals, and staff decisions.
+ * Actions for me: my own requests needing a step, sponsor approvals, and staff decisions,
+ * soonest session first (the rows carry no decision deadline, so how soon the session starts is
+ * the honest measure of urgency). Requests without days sort last.
  */
 export function buildActions(
   mine: readonly EventSummary[] | undefined,
   sponsoring: readonly EventSummary[] | undefined,
   studio: readonly EventSummary[] | undefined
 ): DashboardAction[] {
-  return [
+  const actions: DashboardAction[] = [
     ...(mine ?? []).flatMap((e) =>
       needsUser(e.nextAction)
-        ? [{ id: e.id, title: e.title, action: e.nextAction }]
+        ? [
+            {
+              id: e.id,
+              title: e.title,
+              action: e.nextAction,
+              startsAt: startOf(e),
+            },
+          ]
         : []
     ),
     ...(sponsoring ?? [])
@@ -140,6 +155,7 @@ export function buildActions(
         id: e.id,
         title: e.title,
         action: "Approve or reject this request",
+        startsAt: startOf(e),
       })),
     ...(studio ?? [])
       .filter((e) => e.state === "SponsorApproved" || e.needsReview)
@@ -149,8 +165,15 @@ export function buildActions(
         action: e.needsReview
           ? "Review the flagged request"
           : "Confirm or reject this request",
+        startsAt: startOf(e),
       })),
   ]
+  return actions.sort((a, b) => {
+    if (a.startsAt === b.startsAt) return 0
+    if (a.startsAt === null) return 1
+    if (b.startsAt === null) return -1
+    return a.startsAt.localeCompare(b.startsAt)
+  })
 }
 
 /** Events (mine or sponsored, counted once) whose next step is someone else's. */
