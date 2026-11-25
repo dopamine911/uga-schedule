@@ -20,6 +20,7 @@ import { routes as holds } from "./routes/holds.ts"
 import { routes as levels } from "./routes/levels.ts"
 import { routes as notifications } from "./routes/notifications.ts"
 import { routes as policies } from "./routes/policies.ts"
+import { routes as queue } from "./routes/queue.ts"
 import { routes as results } from "./routes/results.ts"
 import { routes as stages } from "./routes/stages.ts"
 import { routes as studios } from "./routes/studios.ts"
@@ -40,6 +41,7 @@ const api = new Hono<AppEnv>()
   .route("/stages", stages)
   .route("/holds", holds)
   .route("/results", results)
+  .route("/queue", queue)
   .route("/notifications", notifications)
   .route("/calendar", calendar)
   .route("/audit", audit)
