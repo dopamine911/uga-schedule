@@ -45,7 +45,7 @@ The **clock button** in the header is available in dev mode only. It moves time 
 ## Checks
 
 ```sh
-pnpm check         # everything below except doctor, in order
+pnpm check         # lint, format:check, typecheck, test, in that order
 pnpm lint          # oxlint over all packages (.oxlintrc.json); warnings fail
 pnpm lint:fix
 pnpm format        # oxfmt, writes files (.oxfmtrc.json; also sorts Tailwind classes)
@@ -53,6 +53,8 @@ pnpm format:check
 pnpm typecheck
 pnpm test          # domain unit tests + API integration tests
 pnpm doctor        # React Doctor scan of packages/web (pinned in devDependencies)
+pnpm coverage      # api + domain tests with coverage; writes COVERAGE.md and the totals below
+pnpm coverage:check # fails if the committed COVERAGE.md no longer matches actual coverage
 ```
 
 Lint and format configs live at the repo root and cover every package. oxlint doesn't flag undefined names in TypeScript; `pnpm typecheck` does.
@@ -60,6 +62,25 @@ Lint and format configs live at the repo root and cover every package. oxlint do
 `pnpm check` also runs in CI on every pull request and on pushes to `main` (`.github/workflows/check.yml`, Node 24, frozen lockfile). Make it a required status check in the branch protection settings to block merging on failures.
 
 React Doctor also runs on every pull request and on pushes to `main` (`.github/workflows/react-doctor.yml`). It comments with new findings and never fails the check; set `blocking` in that file to gate on them.
+
+A pre-commit hook (`.githooks/pre-commit`) runs `pnpm check` before every commit. `pnpm install` turns it on through the `prepare` script (`git config core.hooksPath .githooks`; it does nothing where there is no git checkout, such as a Vercel build). Skip it for a work-in-progress commit with `git commit --no-verify`.
+
+### Coverage
+
+<!-- COVERAGE-START -->
+
+_Coverage at `250e765` (2026-11-27T18:29:23.676Z) — see [COVERAGE.md](./COVERAGE.md)._
+
+| Metric     | %     | Covered/Total |
+| ---------- | ----- | ------------- |
+| lines      | 68.3% | 2006/2938     |
+| statements | 66.2% | 2130/3216     |
+| functions  | 64.2% | 442/689       |
+| branches   | 56.4% | 1124/1994     |
+
+<!-- COVERAGE-END -->
+
+`pnpm coverage` runs the api and domain tests as one vitest run (`vitest.coverage.config.ts`), writes the HTML report to `coverage/` (gitignored) and the summary to [COVERAGE.md](./COVERAGE.md). Commit COVERAGE.md and the README block above when they change; CI does not check them.
 
 ## Deploy (Vercel)
 

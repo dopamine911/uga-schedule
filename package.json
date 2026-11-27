@@ -15,12 +15,17 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test",
-    "doctor": "react-doctor -y --verbose"
+    "coverage": "DEV_MODE=1 vitest run --config vitest.coverage.config.ts --coverage && node scripts/coverage-to-markdown.ts && node scripts/coverage-to-markdown.ts --readme && oxfmt README.md",
+    "coverage:check": "DEV_MODE=1 vitest run --config vitest.coverage.config.ts --coverage && node scripts/coverage-to-markdown.ts --check",
+    "doctor": "react-doctor -y --verbose",
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.12",
     "oxfmt": "^0.80.0",
     "oxlint": "^1.95.0",
     "oxlint-tsgolint": "^7.0.2008",
-    "react-doctor": "^0.9.23"
+    "react-doctor": "^0.9.23",
+    "vitest": "^4.1.12"
   }
 }

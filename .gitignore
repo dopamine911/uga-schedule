@@ -8,3 +8,4 @@ packages/api/data/
 .env*
 .local/
 .vercel/
+coverage/

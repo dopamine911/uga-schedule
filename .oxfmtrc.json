@@ -16,6 +16,7 @@
     "packages/api/drizzle/",
     "specs/",
     ".agents/",
-    ".claude/"
+    ".claude/",
+    "COVERAGE.md"
   ]
 }
