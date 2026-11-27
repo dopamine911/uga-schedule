@@ -31,5 +31,24 @@ export const config = {
       ? `https://${process.env.VERCEL_URL}`
       : "http://localhost:5173"),
   maxUploadBytes: 500 * 1024 * 1024,
+  /**
+   * Outgoing email (lib/email.ts). EMAIL_PROVIDER "log" prints instead of sending; "smtp" sends through SMTP_URL, so
+   * switching services is a change of URL. RESEND_API_KEY (set by the Vercel Resend integration) is enough on its own:
+   * it selects Resend's SMTP server. EMAIL_FROM is "Name <address>" on a domain the service has verified (Resend allows
+   * onboarding@resend.dev, to the account's own address only, until one is); invitations use it as the organizer.
+   */
+  email: (() => {
+    const resendKey = process.env.RESEND_API_KEY
+    const smtpUrl =
+      process.env.SMTP_URL ??
+      (resendKey
+        ? `smtps://resend:${encodeURIComponent(resendKey)}@smtp.resend.com:465`
+        : "")
+    return {
+      provider: process.env.EMAIL_PROVIDER ?? (smtpUrl ? "smtp" : "log"),
+      smtpUrl,
+      from: process.env.EMAIL_FROM ?? "Studio Scheduling <no-reply@localhost>",
+    }
+  })(),
   quietHours: { start: "22:00", end: "07:00" },
 }
