@@ -1,0 +1,13 @@
+#!/bin/sh
+# Pre-commit gate: runs `pnpm check` (oxlint, oxfmt --check, typecheck, tests),
+# the same command CI runs (.github/workflows/check.yml), so "green" has one
+# definition: the `check` script in package.json.
+#
+# Enabled by `git config core.hooksPath .githooks`, which the root `prepare`
+# script sets on `pnpm install`. For a deliberate work-in-progress commit,
+# bypass with `git commit --no-verify`.
+#
+# Git runs hooks from the repo root, where package.json lives.
+set -e
+
+pnpm check
