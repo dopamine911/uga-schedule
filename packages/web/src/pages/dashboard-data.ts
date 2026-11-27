@@ -1,6 +1,6 @@
 import { type EventState, TERMINAL } from "@studio/domain"
 
-// Pure derivations for the home page: which events matter, what needs the user, and count text.
+// Pure derivations for the home page sections that are not the work queue (upcoming events, notifications, greeting).
 // Row shapes are the structural subset each helper reads; API rows satisfy them.
 
 /** Event row as the dashboard reads it (the events list endpoint, any scope). */
@@ -9,9 +9,6 @@ export interface EventSummary {
   title: string
   state: EventState
   nextAction: string | null
-  /** When the request expires if nobody decides; null when it is not awaiting a decision (API, BR-006-07). */
-  decideBy: string | null
-  needsReview: boolean
   days: readonly {
     day: string
     startTime: string
@@ -21,71 +18,11 @@ export interface EventSummary {
   studio: { name: string }
 }
 
-export interface HoldRow {
-  id: string
-  status: string
-  reason: string
-  eventTitle?: string | null
-}
-
-export interface GrantRow {
-  id: string
-  status: string
-  levelName: string
-  validUntil?: string | null
-}
-
 export interface NotificationRow {
   id: string
   subject: string
   createdAt: string
   readAt: string | null
-}
-
-export interface CheckoutSummary {
-  outstanding: readonly { dueAt: string }[]
-}
-
-/** A queue query as the desk and dashboard cards read it. */
-export interface CountSource {
-  data: readonly unknown[] | undefined
-  error: unknown
-}
-
-export interface DashboardAction {
-  id: string
-  title: string
-  action: string
-  /** When the request's first session starts (UTC ISO), or null if it has no days yet. */
-  startsAt: string | null
-  /** When the request expires if nobody decides (UTC ISO), or null when not awaiting a decision. */
-  decideBy: string | null
-}
-
-/** Decisions expiring within this window count as "Act now" (red) rather than "Needs you" (amber). */
-export const ACT_NOW_WINDOW_MS = 4 * 3_600_000
-
-/** The moment that makes this step urgent: its decision deadline if it has one, else its session start. */
-export function urgentAt(action: DashboardAction): string | null {
-  return action.decideBy ?? action.startsAt
-}
-
-/** Whether a step's decision deadline falls within ACT_NOW_WINDOW_MS of `now`. */
-export function isActNow(action: DashboardAction, now: number): boolean {
-  return (
-    action.decideBy !== null &&
-    Date.parse(action.decideBy) - now < ACT_NOW_WINDOW_MS
-  )
-}
-
-/** Next-action text that asks the user to do something (the rest describe waiting on others). */
-export function needsUser(nextAction: string | null): nextAction is string {
-  return nextAction !== null && !/^(Waiting|Event in progress)/.test(nextAction)
-}
-
-/** A queue count for a card: "—" when the query failed, "…" while it loads. */
-export function countOf(q: CountSource) {
-  return q.error ? "—" : (q.data?.length ?? "…")
 }
 
 /** Greeting for the campus-local hour. */
@@ -111,146 +48,11 @@ export function clearanceSentence(
   return level ? `You're cleared for ${level.name}. ` : ""
 }
 
-/** Holds that currently block new requests. */
-export function activeHoldsOf(
-  holds: readonly HoldRow[] | undefined
-): HoldRow[] {
-  return (holds ?? []).filter((h) => h.status === "active")
-}
-
-/** Access grants that are about to run out. */
-export function expiringGrantsOf(
-  grants: readonly GrantRow[] | undefined
-): GrantRow[] {
-  return (grants ?? []).filter((g) => g.status === "expiring")
-}
-
-/** Checkouts with at least one outstanding item past its due time. */
-export function countOverdue(
-  checks: readonly { data: CheckoutSummary | undefined }[],
-  now: number
-): number {
-  return checks.filter((c) =>
-    (c.data?.outstanding ?? []).some((r) => Date.parse(r.dueAt) < now)
-  ).length
-}
-
 /** Unread notifications, newest page only. */
 export function unreadOf(
   notifications: readonly NotificationRow[] | undefined
 ): NotificationRow[] {
   return (notifications ?? []).filter((n) => n.readAt === null).slice(0, 5)
-}
-
-function startOf(e: EventSummary): string | null {
-  return e.days[0]?.startsAt ?? null
-}
-
-/**
- * Actions for me: my own requests needing a step, sponsor approvals, and staff decisions, most urgent
- * first: by decision deadline when the request is awaiting one, otherwise by session start.
- * Requests with neither sort last.
- */
-export function buildActions(
-  mine: readonly EventSummary[] | undefined,
-  sponsoring: readonly EventSummary[] | undefined,
-  studio: readonly EventSummary[] | undefined
-): DashboardAction[] {
-  const actions: DashboardAction[] = [
-    ...(mine ?? []).flatMap((e) =>
-      needsUser(e.nextAction)
-        ? [
-            {
-              id: e.id,
-              title: e.title,
-              action: e.nextAction,
-              startsAt: startOf(e),
-              decideBy: e.decideBy,
-            },
-          ]
-        : []
-    ),
-    ...(sponsoring ?? [])
-      .filter((e) => e.state === "Submitted")
-      .map((e) => ({
-        id: e.id,
-        title: e.title,
-        action: "Approve or reject this request",
-        startsAt: startOf(e),
-        decideBy: e.decideBy,
-      })),
-    ...(studio ?? [])
-      .filter((e) => e.state === "SponsorApproved" || e.needsReview)
-      .map((e) => ({
-        id: e.id,
-        title: e.title,
-        action: e.needsReview
-          ? "Review the flagged request"
-          : "Confirm or reject this request",
-        startsAt: startOf(e),
-        decideBy: e.decideBy,
-      })),
-  ]
-  return actions.sort((a, b) => {
-    const first = urgentAt(a)
-    const second = urgentAt(b)
-    if (first === second) return 0
-    if (first === null) return 1
-    if (second === null) return -1
-    return first.localeCompare(second)
-  })
-}
-
-/** Events (mine or sponsored, counted once) whose next step is someone else's. */
-export function waitingCountOf(
-  mine: readonly EventSummary[] | undefined,
-  sponsoring: readonly EventSummary[] | undefined
-): number {
-  const waiting = [...(mine ?? []), ...(sponsoring ?? [])].filter(
-    (e) => e.nextAction !== null && e.nextAction.startsWith("Waiting")
-  )
-  return new Set(waiting.map((e) => e.id)).size
-}
-
-/** One coloured count chip in the dashboard header. Tone follows the colour jobs in index.css. */
-export interface AttentionChip {
-  tone: "act-now" | "needs-you" | "waiting"
-  label: string
-  value: number
-}
-
-/**
- * Header chips, most urgent first, leaving out zero counts.
- * - Act now (red): late equipment returns, holds that block new requests, and decisions that expire
- *   within ACT_NOW_WINDOW_MS.
- * - Needs you (amber): other decisions or steps waiting on this user, and access that is about to expire.
- * - Waiting on others (blue): the user's or sponsored requests whose next step is someone else's.
- */
-export function attentionChips(counts: {
-  overdueReturns: number
-  activeHolds: number
-  /** Steps waiting on this user whose decision expires within ACT_NOW_WINDOW_MS (counted once, as Act now). */
-  actionsExpiringSoon: number
-  actions: number
-  expiringGrants: number
-  waiting: number
-}): AttentionChip[] {
-  const chips: AttentionChip[] = [
-    {
-      tone: "act-now",
-      label: "Act now",
-      value:
-        counts.overdueReturns + counts.activeHolds + counts.actionsExpiringSoon,
-    },
-    {
-      tone: "needs-you",
-      label: "Needs you",
-      value:
-        counts.actions - counts.actionsExpiringSoon + counts.expiringGrants,
-    },
-    { tone: "waiting", label: "Waiting on others", value: counts.waiting },
-  ]
-  return chips.filter((chip) => chip.value > 0)
 }
 
 /**
@@ -283,21 +85,6 @@ export function buildUpcoming(
 export interface QueryFlags {
   error: unknown
   isPending: boolean
-}
-
-/** Actions card is loading while a list it reads is still pending (sponsor and staff lists only when shown). */
-export function actionsPending(
-  mine: QueryFlags,
-  sponsoring: QueryFlags,
-  studio: QueryFlags,
-  isSponsor: boolean,
-  canStaffDecide: boolean
-): boolean {
-  return (
-    mine.isPending ||
-    (isSponsor && sponsoring.isPending) ||
-    (canStaffDecide && studio.isPending)
-  )
 }
 
 /** Upcoming card's query state: the first failure, loading while my or sponsored events load. */

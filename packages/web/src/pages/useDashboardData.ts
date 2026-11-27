@@ -1,19 +1,8 @@
-import { useQueries, useQuery } from "@tanstack/react-query"
-import { checkoutQuery, useNow } from "@/components/staff/shared"
+import { useQuery } from "@tanstack/react-query"
+import { useNow } from "@/components/staff/shared"
 import { api, unwrap } from "@/lib/api"
 import { useCan, useHasRole, useTz, useUser } from "@/lib/auth"
-import { useDeskQueues } from "@/pages/staff/Desk"
-import {
-  actionsPending,
-  activeHoldsOf,
-  buildActions,
-  buildUpcoming,
-  countOverdue,
-  expiringGrantsOf,
-  unreadOf,
-  upcomingState,
-  waitingCountOf,
-} from "@/pages/dashboard-data"
+import { buildUpcoming, unreadOf, upcomingState } from "@/pages/dashboard-data"
 
 /** Everything the home page shows, fetched and derived once. */
 export function useDashboardData() {
@@ -24,12 +13,11 @@ export function useDashboardData() {
   const now = useNow()
   const isSponsor = hasRole("SPONSOR")
   const canRequest = can("event.create")
-  const canDesk = can("checkout.perform")
-  const canStaffDecide = can("event.staff_decide")
 
-  const holds = useQuery({
-    queryKey: ["holds", "mine"],
-    queryFn: () => unwrap(api.holds.$get({ query: { scope: "mine" } })),
+  const queue = useQuery({
+    queryKey: ["queue"],
+    queryFn: () => unwrap(api.queue.$get()),
+    refetchInterval: 60_000,
   })
   const access = useQuery({
     queryKey: ["levels", "me"],
@@ -44,22 +32,9 @@ export function useDashboardData() {
     queryFn: () => unwrap(api.events.$get({ query: { scope: "sponsoring" } })),
     enabled: isSponsor,
   })
-  const studio = useQuery({
-    queryKey: ["events", "list", "studio", "all"],
-    queryFn: () => unwrap(api.events.$get({ query: { scope: "studio" } })),
-    enabled: canStaffDecide,
-  })
   const notifications = useQuery({
     queryKey: ["notifications"],
     queryFn: () => unwrap(api.notifications.$get()),
-  })
-  const desk = useDeskQueues(canDesk)
-  // Same checkout queries the desk uses, so overdue counts agree with the desk page.
-  const outChecks = useQueries({
-    queries: (desk.returns.data ?? []).map((e) => ({
-      ...checkoutQuery(e.id),
-      enabled: canDesk,
-    })),
   })
 
   const upcoming = buildUpcoming(mine.data, sponsoring.data, now)
@@ -69,32 +44,12 @@ export function useDashboardData() {
     tz,
     now,
     canRequest,
-    canDesk,
-    canStaffDecide,
     isSponsor,
-    holds,
     access,
+    queue,
     notifications,
-    desk,
-    activeHolds: activeHoldsOf(holds.data),
-    expiring: expiringGrantsOf(access.data?.grants),
-    overdueOut: countOverdue(outChecks, now),
-    awaitingConfirmation: {
-      data: studio.data?.filter((e) => e.state === "SponsorApproved"),
-      error: studio.error,
-    },
-    actions: buildActions(mine.data, sponsoring.data, studio.data),
-    actionsLoading: actionsPending(
-      mine,
-      sponsoring,
-      studio,
-      isSponsor,
-      canStaffDecide
-    ),
-    upcoming,
     upcomingQuery: upcomingState(mine, sponsoring, isSponsor, upcoming),
     unread: unreadOf(notifications.data),
-    waitingCount: waitingCountOf(mine.data, sponsoring.data),
     roles: user.roles.map((assignment) => assignment.role),
   }
 }

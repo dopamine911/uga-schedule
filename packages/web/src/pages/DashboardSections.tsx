@@ -1,28 +1,14 @@
 import type { RoleCode } from "@studio/domain"
-import {
-  BellIcon,
-  CalendarCheckIcon,
-  ClockIcon,
-  HourglassIcon,
-  OctagonAlertIcon,
-  CalendarDaysIcon,
-  ListTodoIcon,
-  PackageIcon,
-  PackageOpenIcon,
-  PlusIcon,
-  type LucideIcon,
-} from "lucide-react"
+import { BellIcon, CalendarDaysIcon, PlusIcon } from "lucide-react"
 import { Link } from "react-router"
 import {
   EmptyState,
-  ErrorAlert,
   IconTitle,
   QueryView,
   StateBadge,
 } from "@/components/common"
 import { DateTile } from "@/components/events/DateTile"
 import { usePeekLink } from "@/components/EventPeek"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -31,49 +17,23 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import {
-  fmtDay,
-  fmtDays,
-  fmtInstant,
-  fmtRelative,
-  firstName,
-  humanize,
-} from "@/lib/format"
+import { fmtDays, fmtInstant, firstName } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { primaryRole } from "@/lib/nav"
 import { ROLE_INFO } from "@/lib/roles"
 import {
-  type AttentionChip,
   clearanceSentence,
-  type CountSource,
-  countOf,
-  type DashboardAction,
-  isActNow,
   type EventSummary,
-  type GrantRow,
   greeting,
-  type HoldRow,
   type NotificationRow,
 } from "@/pages/dashboard-data"
+import { type QueueChip, TIER } from "@/pages/home/QueueSections"
 
-// Sections of the home page. Each is one card, banner row or hero block; DashboardPage composes them.
-
-/** Chip colours per tone: red = act now, amber = needs you, blue = waiting on someone else (index.css colour jobs). */
-const ATTENTION_CHIP_CLASS: Record<AttentionChip["tone"], string> = {
-  "act-now": "bg-critical text-critical-foreground",
-  "needs-you": "bg-warning text-warning-foreground",
-  waiting: "bg-info text-info-foreground",
-}
-const ATTENTION_CHIP_ICON: Record<AttentionChip["tone"], LucideIcon> = {
-  "act-now": OctagonAlertIcon,
-  "needs-you": ClockIcon,
-  waiting: HourglassIcon,
-}
+// Sections of the home page that are not the work queue. DashboardPage composes them with the queue.
 
 /**
  * Light page header: a chip naming the user's role, a sentence-case greeting, the clearance line,
- * and coloured count chips for what needs attention. Replaces the black hero, whose three grey
- * counts all looked equally (un)important. The date moved to the top bar.
+ * and coloured count chips for the work queue. `chips` is undefined while the queue loads.
  */
 export function DashboardHeader({
   now,
@@ -90,7 +50,7 @@ export function DashboardHeader({
   roles: readonly RoleCode[]
   level: { name: string } | null | undefined
   canRequest: boolean
-  chips: readonly AttentionChip[]
+  chips: readonly QueueChip[] | undefined
 }) {
   const role = primaryRole(roles)
   const RoleIcon = role ? ROLE_INFO[role].icon : null
@@ -111,16 +71,16 @@ export function DashboardHeader({
         {level && (
           <p className="text-muted-foreground">{clearanceSentence(level)}</p>
         )}
-        {chips.length > 0 ? (
+        {chips === undefined ? null : chips.length > 0 ? (
           <ul aria-label="Summary" className="flex flex-wrap gap-2">
             {chips.map((chip) => {
-              const Icon = ATTENTION_CHIP_ICON[chip.tone]
+              const Icon = TIER[chip.severity].icon
               return (
                 <li
-                  key={chip.tone}
+                  key={chip.severity}
                   className={cn(
                     "flex items-center gap-2 rounded-full py-1 pr-3 pl-1 text-sm font-bold",
-                    ATTENTION_CHIP_CLASS[chip.tone]
+                    TIER[chip.severity].panel
                   )}
                 >
                   <span className="grid h-7 min-w-7 place-items-center rounded-full bg-card px-2 font-heading text-base font-medium tabular-nums">
@@ -145,158 +105,6 @@ export function DashboardHeader({
         </Button>
       )}
     </header>
-  )
-}
-
-/** Holds error, then one destructive banner per active hold. */
-export function HoldBanners({
-  error,
-  holds,
-}: {
-  error: unknown
-  holds: readonly HoldRow[]
-}) {
-  return (
-    <>
-      {error ? <ErrorAlert error={error} /> : null}
-      {holds.map((h) => (
-        <Alert key={h.id} variant="destructive">
-          <AlertTitle>Your account has an active hold</AlertTitle>
-          <AlertDescription>
-            {humanize(h.reason)}
-            {h.eventTitle ? ` on “${h.eventTitle}”` : ""}. New requests are
-            blocked until it is cleared.{" "}
-            <Link to="/me/access" className="underline underline-offset-4">
-              See details
-            </Link>
-          </AlertDescription>
-        </Alert>
-      ))}
-    </>
-  )
-}
-
-/** One banner per access grant that is about to run out. */
-export function ExpiringAccessBanners({
-  grants,
-}: {
-  grants: readonly GrantRow[]
-}) {
-  return (
-    <>
-      {grants.map((g) => (
-        <Alert key={g.id}>
-          <AlertTitle>Your {g.levelName} access ends soon</AlertTitle>
-          <AlertDescription>
-            {g.validUntil
-              ? `Access runs out on ${fmtDay(g.validUntil)}.`
-              : "Access is ending soon."}{" "}
-            <Link to="/me/access" className="underline underline-offset-4">
-              View access
-            </Link>
-          </AlertDescription>
-        </Alert>
-      ))}
-    </>
-  )
-}
-
-/** Linked staff queue counts; the row is hidden when the user has no desk or decision role. */
-export function StaffCards({
-  canDesk,
-  canStaffDecide,
-  pickups,
-  returns,
-  awaiting,
-  overdueOut,
-}: {
-  canDesk: boolean
-  canStaffDecide: boolean
-  pickups: CountSource
-  returns: CountSource
-  awaiting: CountSource
-  overdueOut: number
-}) {
-  if (!canDesk && !canStaffDecide) return null
-  return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-      {canDesk && (
-        <QueueCard
-          icon={PackageOpenIcon}
-          label="Pickups"
-          value={countOf(pickups)}
-          detail="Confirmed events starting today or tomorrow."
-          to="/desk"
-        />
-      )}
-      {canDesk && (
-        <QueueCard
-          icon={PackageIcon}
-          label="Equipment out"
-          value={countOf(returns)}
-          detail={
-            overdueOut > 0
-              ? `${overdueOut} overdue for return.`
-              : "Nothing overdue."
-          }
-          to="/desk"
-          urgent={overdueOut > 0}
-        />
-      )}
-      {canStaffDecide && (
-        <QueueCard
-          icon={CalendarCheckIcon}
-          label="Awaiting confirmation"
-          value={countOf(awaiting)}
-          detail="Sponsor-approved requests for staff to confirm."
-          to="/approvals"
-        />
-      )}
-    </div>
-  )
-}
-
-/** A linked count for one staff queue (desk or approvals). */
-function QueueCard({
-  icon: Icon,
-  label,
-  value,
-  detail,
-  to,
-  urgent = false,
-}: {
-  icon: LucideIcon
-  label: string
-  value: number | string
-  detail: string
-  to: string
-  urgent?: boolean
-}) {
-  return (
-    <Link
-      to={to}
-      className="rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <Card
-        className={cn(
-          "h-full transition-colors hover:bg-accent/50",
-          urgent && "border-destructive/50"
-        )}
-      >
-        <CardHeader>
-          <CardDescription className="flex items-center gap-2">
-            <Icon aria-hidden="true" className="size-4 text-primary" />
-            {label}
-          </CardDescription>
-          <CardTitle className="font-heading text-3xl font-medium tabular-nums">
-            {value}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          {detail}
-        </CardContent>
-      </Card>
-    </Link>
   )
 }
 
@@ -363,167 +171,6 @@ export function UpcomingEventsCard({
             )
           }
         </QueryView>
-      </CardContent>
-    </Card>
-  )
-}
-
-/** Steps that wait on the user, across requests, sponsor approvals and staff decisions. */
-/**
- * The single most pressing step, shown large so the eye lands on it first: the action whose session
- * starts soonest. Hidden when nothing waits on the user. The countdown is to the session start,
- * not to a decision deadline (the dashboard rows carry none).
- */
-export function NextUpCard({
-  action,
-  tz,
-  now,
-}: {
-  action: DashboardAction | undefined
-  tz: string
-  now: number
-}) {
-  const peek = usePeekLink()
-  if (!action) return null
-  const urgent = isActNow(action, now)
-  const toneClass = urgent
-    ? "bg-critical text-critical-foreground"
-    : "bg-warning text-warning-foreground"
-  return (
-    <section
-      aria-labelledby="next-up-title"
-      className="flex flex-col gap-4 rounded-xl border bg-card p-5 shadow-sm md:flex-row md:items-center md:justify-between"
-    >
-      <div className="flex min-w-0 flex-col gap-2">
-        <p className="flex items-center gap-2 text-xs font-bold tracking-[0.14em] text-muted-foreground uppercase">
-          Next up
-          <span
-            className={cn(
-              "rounded-full px-2 py-0.5 tracking-normal normal-case",
-              toneClass
-            )}
-          >
-            {urgent ? "Act now" : "Needs you"}
-          </span>
-        </p>
-        <h2 id="next-up-title" className="text-2xl leading-tight font-medium">
-          <Link
-            to={peek(action.id)}
-            className="underline-offset-4 hover:underline"
-          >
-            {action.title}
-          </Link>
-        </h2>
-        <p className="text-muted-foreground">{action.action}</p>
-        <div>
-          <Button asChild>
-            <Link to={`/events/${action.id}`}>Open request</Link>
-          </Button>
-        </div>
-      </div>
-      <NextUpCountdown
-        action={action}
-        now={now}
-        tz={tz}
-        toneClass={toneClass}
-      />
-    </section>
-  )
-}
-
-/**
- * Countdown panel for Next up: to the decision deadline when the request is awaiting one (the moment it
- * expires if nobody acts), otherwise to the session start. Nothing when neither is known.
- */
-function NextUpCountdown({
-  action,
-  now,
-  tz,
-  toneClass,
-}: {
-  action: DashboardAction
-  now: number
-  tz: string
-  toneClass: string
-}) {
-  const target = action.decideBy ?? action.startsAt
-  if (!target) return null
-  const future = Date.parse(target) > now
-  let caption = "the session is under way"
-  if (action.decideBy) caption = future ? "until it expires" : "expired"
-  else if (future) caption = "until the session"
-  return (
-    <div
-      className={cn(
-        "flex shrink-0 flex-col gap-1 rounded-lg px-5 py-4 md:min-w-56",
-        toneClass
-      )}
-    >
-      <span className="font-heading text-4xl leading-none font-medium">
-        {future ? fmtRelative(target, now).replace(/^in /, "") : "Now"}
-      </span>
-      <span className="text-sm font-bold">
-        {caption} · {fmtInstant(target, tz)}
-      </span>
-    </div>
-  )
-}
-
-export function NeedsActionCard({
-  actions,
-  loading,
-  tz,
-}: {
-  actions: readonly DashboardAction[]
-  loading: boolean
-  tz: string
-}) {
-  const peek = usePeekLink()
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          <IconTitle icon={ListTodoIcon}>Also needs you</IconTitle>
-        </CardTitle>
-        <CardDescription>
-          Other steps that wait on you, most urgent first.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : actions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Nothing else needs you right now.
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {actions.map((a) => (
-              <li key={`${a.id}:${a.action}`} className="flex gap-3">
-                {/* Amber like the header's "Needs you" chip: waiting on this user, not late (red). */}
-                <span
-                  aria-hidden="true"
-                  className="mt-1.5 size-2.5 shrink-0 rounded-full bg-warning-solid"
-                />
-                <span className="flex min-w-0 flex-col">
-                  <Link
-                    to={peek(a.id)}
-                    className="font-bold underline-offset-4 hover:underline"
-                  >
-                    {a.title}
-                  </Link>
-                  <span className="text-sm text-muted-foreground">
-                    {a.action}
-                    {a.decideBy
-                      ? ` · Expires ${fmtInstant(a.decideBy, tz)}`
-                      : a.startsAt &&
-                        ` · Session ${fmtInstant(a.startsAt, tz)}`}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
       </CardContent>
     </Card>
   )
