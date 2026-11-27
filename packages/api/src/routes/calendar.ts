@@ -23,6 +23,7 @@ import { config } from "../config.ts"
 import { loadSessionUser, requireUser } from "../lib/auth.ts"
 import { now } from "../lib/clock.ts"
 import { forbidden, notFound } from "../lib/errors.ts"
+import { escapeText, foldLine, icsUtc } from "../lib/ics.ts"
 import { localLabel, pickupOpensAt, typeOf } from "../services/lifecycle.ts"
 
 // F-009 calendar feeds (ICS only in v0). Feeds are token-authenticated (BR-009-06) and always belong to one
@@ -127,47 +128,6 @@ async function feedByToken(
   if (feed.studioId && !can(owner, "event.view", { studioId: feed.studioId }))
     return undefined
   return feed
-}
-
-// ── ICS formatting (RFC 5545) ────────────────────────────────────────
-
-/** Text escaping: backslash, semicolon, comma, newline (RFC 5545 §3.3.11). */
-export function escapeText(s: string): string {
-  return s
-    .replace(/\\/g, "\\\\")
-    .replace(/;/g, "\\;")
-    .replace(/,/g, "\\,")
-    .replace(/\r?\n/g, "\\n")
-}
-
-/** Folds a content line to 75 octets, never splitting a UTF-8 character (RFC 5545 §3.1). */
-export function foldLine(line: string): string {
-  const enc = new TextEncoder()
-  const out: string[] = []
-  let current = ""
-  let bytes = 0
-  let limit = 75
-  for (const ch of line) {
-    const n = enc.encode(ch).length
-    if (bytes + n > limit) {
-      out.push(current)
-      current = ""
-      bytes = 0
-      limit = 74
-    }
-    current += ch
-    bytes += n
-  }
-  out.push(current)
-  return out.map((part, i) => (i === 0 ? part : ` ${part}`)).join("\r\n")
-}
-
-/** UTC ISO instant → 20261128T140000Z. */
-export function icsUtc(iso: string): string {
-  return new Date(iso)
-    .toISOString()
-    .replace(/\.\d{3}Z$/, "Z")
-    .replace(/[-:]/g, "")
 }
 
 interface VEventInput {

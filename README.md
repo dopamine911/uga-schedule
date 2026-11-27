@@ -82,16 +82,21 @@ Uploads go from the browser straight to Blob through presigned URLs, so the 4.5 
 
 Project environment variables:
 
-| Variable                                     | Required | Purpose                                                                                     |
-| -------------------------------------------- | -------- | ------------------------------------------------------------------------------------------- |
-| `SESSION_SECRET`                             | yes      | Signs session cookies and calendar feed links                                               |
-| `CRON_SECRET`                                | yes      | Vercel Cron sends it as a bearer token; `/api/jobs/tick` rejects requests without it        |
-| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`     | yes      | The database; set by the Turso integration                                                  |
-| `BLOB_STORE_ID` (or `BLOB_READ_WRITE_TOKEN`) | yes      | The Blob store; set when the store is connected. Without it files go to the function's disk |
-| `PUBLIC_BASE_URL`                            | no       | Origin for links in notifications and feeds; defaults to the deployment URL (`VERCEL_URL`)  |
-| `CAMPUS_TZ`                                  | no       | Defaults to `America/New_York`                                                              |
+| Variable                                     | Required  | Purpose                                                                                      |
+| -------------------------------------------- | --------- | -------------------------------------------------------------------------------------------- |
+| `SESSION_SECRET`                             | yes       | Signs session cookies and calendar feed links                                                |
+| `CRON_SECRET`                                | yes       | Vercel Cron sends it as a bearer token; `/api/jobs/tick` rejects requests without it         |
+| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`     | yes       | The database; set by the Turso integration                                                   |
+| `BLOB_STORE_ID` (or `BLOB_READ_WRITE_TOKEN`) | yes       | The Blob store; set when the store is connected. Without it files go to the function's disk  |
+| `PUBLIC_BASE_URL`                            | no        | Origin for links in notifications and feeds; defaults to the deployment URL (`VERCEL_URL`)   |
+| `CAMPUS_TZ`                                  | no        | Defaults to `America/New_York`                                                               |
+| `EMAIL_PROVIDER`                             | no        | `log` (default: print instead of sending) or `smtp`                                          |
+| `SMTP_URL`                                   | with smtp | Any SMTP service, e.g. `smtps://resend:<key>@smtp.resend.com:465`; port 465 or 587 on Vercel |
+| `EMAIL_FROM`                                 | with smtp | `Name <address>` on a domain the service has verified; invitations use it as the organizer   |
 
 Preview deployments share the production database unless the integration gives them their own; connect a separate Turso database to the Preview environment to keep test data out of production.
+
+Email goes through `packages/api/src/lib/email.ts`. Swapping services is a new `SMTP_URL` (Resend, Postmark, Amazon SES and Mailgun all offer SMTP). To check that calendar invitations land in Gmail and Outlook, `pnpm --filter @studio/api email:test --to <address>` sends a test invitation; it prints how to resend it as an update or a cancellation.
 
 Run both services locally the way Vercel does with `vercel dev --local` (set the variables above in the shell).
 

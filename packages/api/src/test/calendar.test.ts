@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { foldLine } from "../routes/calendar.ts"
+import { foldLine } from "../lib/ics.ts"
 
 // RFC 5545 §3.1: content lines are at most 75 octets; longer ones continue on lines starting with one space.
 const octets = (s: string) => new TextEncoder().encode(s).length

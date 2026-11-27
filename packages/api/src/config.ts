@@ -31,5 +31,15 @@ export const config = {
       ? `https://${process.env.VERCEL_URL}`
       : "http://localhost:5173"),
   maxUploadBytes: 500 * 1024 * 1024,
+  /**
+   * Outgoing email (lib/email.ts). EMAIL_PROVIDER "log" (default) prints instead of sending; "smtp" sends through
+   * SMTP_URL, e.g. smtps://resend:<api key>@smtp.resend.com:465, so switching providers is a change of URL.
+   * EMAIL_FROM is "Name <address>" on a domain the provider has verified; invitations use it as the organizer.
+   */
+  email: {
+    provider: process.env.EMAIL_PROVIDER ?? "log",
+    smtpUrl: process.env.SMTP_URL ?? "",
+    from: process.env.EMAIL_FROM ?? "Studio Scheduling <no-reply@localhost>",
+  },
   quietHours: { start: "22:00", end: "07:00" },
 }
